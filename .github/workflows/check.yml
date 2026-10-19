@@ -1,0 +1,50 @@
+name: Check
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install tmux
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then sudo apt-get update && sudo apt-get install -y tmux; else brew install tmux; fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Runtime versions
+        run: |
+          tmux -V
+          python3 --version
+          rustc --version
+      - run: python3 scripts/check-release.py
+      - name: Verify tag version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 scripts/check-release.py --tag "$RELEASE_TAG"
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --locked
+      - run: python3 tests/tmux_probe.py
+      - run: python3 tests/e2e.py
+      - run: sh tests/install.sh
+      - run: python3 tests/bootstrap_test.py
+      - run: python3 tests/release_version_test.py
+      - run: python3 tests/publish_test.py
+      - run: python3 scripts/check-release.py --binary target/debug/flash-tmux
+      - name: Check shell syntax
+        run: |
+          for script in flash.tmux scripts/*.sh; do sh -n "$script"; done
