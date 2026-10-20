@@ -39,6 +39,30 @@ The first search locates the declaration; `0` moves to the line start and `v` an
 
 ![Active-pane search on the left while Cargo.toml remains unchanged in the right pane](assets/screenshots/3-split-pane.png)
 
+### 4. Expand a Syntax Selection at the Cursor
+
+**Steps:** From the checkout root, run `cat tests/snippets/rust.rs`. Enter copy-mode, move the cursor onto `42`, and press `S`. Press `;` twice: first to preview `let_declaration`, then `block`. Pause before pressing Enter. Use `,` to shrink the range again, or Esc to cancel.
+
+**What to look for:** The function body is previewed and the prompt identifies the current node as `[block]`. Pink labels offer direct access to other enclosing nodes. This is an overlay preview, not a committed tmux selection; Enter confirms it.
+
+![Expanding from 42 to the enclosing Rust block with S](assets/screenshots/4-treesitter-range-preview.png)
+
+### 5. Search Text and Choose an Enclosing Syntax Range
+
+**Steps:** In the same visible Rust example, cancel the previous preview with Esc and move the cursor elsewhere in the code. Press `R`, type `42`, and pause before selecting a label or pressing Enter.
+
+**What to look for:** The query finds `42`, while labels identify its `integer_literal`, `let_declaration`, `block`, and `function_item` ranges. Choose the label for the structure you want, not just the matched text. The displayed letters depend on the current results; `;` and `,` do not expand/shrink in this search mode.
+
+![R search for 42 with the source and enclosing-range label legend](assets/screenshots/5-treesitter-search-labels.png)
+
+### 6. Select a Complete Function From a Search Hit
+
+**Steps:** Continue from case 5 and press the label shown beside `function_item` in the prompt. Pause after the popup closes, before copying or cancelling the selection.
+
+**What to look for:** The whole function is selected, from `fn main()` through the final `}`. The shell command and prompt are excluded, and the syntax labels have disappeared. Press your own copy binding to copy the range while keeping your normal tmux workflow.
+
+![Complete Rust function selected directly from an R search](assets/screenshots/6-treesitter-function-selection.png)
+
 ## Requirements
 
 - tmux 3.3 or newer with popup support; currently tested locally on tmux 3.6a, macOS arm64.
@@ -46,6 +70,17 @@ The first search locates the declaration; `0` moves to the line start and `v` an
 - A true-color terminal for the default Catppuccin Frappe colors.
 - A compatible prebuilt binary, or Rust 1.90+ / Cargo and a C compiler to build from source. Rust is not needed to run a prebuilt binary. Python 3.11+ is only used by development/release tests.
 - For automatic installation: Git, curl, tar, and either sha256sum or shasum. Public GitHub releases must be reachable.
+
+## Features
+
+- **Incremental search (`s`)**: type as much visible text as you need, then jump with a label or Enter. Literal matching uses smart case and Unicode-aware cursor positioning.
+- **Query-safe labels**: a key that could continue the current search is not assigned as a jump label, so typing and label selection do not compete.
+- **Syntax selection (`S`)**: select the named node under the cursor or one of its ancestors. Expand with `;`, shrink with `,`, or choose a range label directly.
+- **Syntax search (`R`)**: search for text and choose an enclosing declaration, block, or function without first navigating to the match.
+- **Built-in language parsers**: 15 Tree-sitter grammars, automatic detection by default, and optional per-pane language overrides. No Neovim or external Tree-sitter installation required.
+- **Selection-aware copying**: ordinary search extends an existing selection; syntax selection creates an exact characterwise range. Your own copy bindings and clipboard setup stay in control.
+- **Active-pane isolation**: search and syntax navigation stay within the visible content of the current pane, without swapping or resizing it.
+- **Safe previews and cancellation**: previews leave the real cursor and selection untouched; Esc/Ctrl+C cancels, and changed viewport/state invalidates pending syntax actions.
 
 ## Local Development / Source Installation
 
@@ -76,7 +111,7 @@ Configure TPM with a published version tag:
 
 ```tmux
 # Put this before TPM initialization; use a published version tag.
-set -g @plugin 'y00rb/flash.tmux#v0.1.0'
+set -g @plugin 'y00rb/flash.tmux#v0.2.0'
 ```
 
 Press `prefix + I`. TPM clones and loads the plugin; `flash.tmux` then installs the binary required by the checked-out `VERSION` into the plugin's `bin/` directory. It identifies OWNER/REPO from the public GitHub HTTPS/SSH origin, never downloads `latest`, and does not require Rust. A compatible installed binary is reused without network access. Private/authenticated release downloads are not supported automatically.
@@ -85,8 +120,8 @@ Pinned tags are detached checkouts: TPM's `prefix + U` uses `git pull` and does 
 
 ```sh
 PLUGIN_DIR='/path/to/tpm/plugins/flash.tmux'
-git -C "$PLUGIN_DIR" fetch origin tag v0.1.1
-git -C "$PLUGIN_DIR" checkout --detach v0.1.1
+git -C "$PLUGIN_DIR" fetch origin tag v0.2.0
+git -C "$PLUGIN_DIR" checkout --detach v0.2.0
 ```
 
 Use the actual directory/version and inspect local changes before checkout; do not force it. Verify the checkout and `bin/flash-tmux --version` agree after loading. For branch-tracking installs without `#tag`, `prefix + U` can pull branch changes; wait for the matching Release to exist before updating. The entrypoint synchronizes the binary when loaded. An unavailable release reports an error; an incompatible old executable is not used for search.
@@ -97,7 +132,7 @@ You can also install a specific published version manually:
 
 ```sh
 # Run from the installed plugin directory; substitute the actual repository/tag.
-sh scripts/install.sh --version v0.1.0 --repo y00rb/flash.tmux
+sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
 ```
 
 The installer chooses macOS arm64/x86_64 or Linux arm64/x86_64 musl, verifies SHA-256 and the program version, then replaces `bin/flash-tmux` atomically and records its version/platform in `bin/install-info`. It preserves the prior binary if download, verification or execution fails. Concurrent installers are serialized; if an installer is forcibly killed, inspect `bin/.install-lock/pid` and confirm its process has exited before removing that stale lock and retrying. Unsupported/offline systems can use a source build with `@flash-bin`.
@@ -140,7 +175,7 @@ Then y copies without exiting, and you can repeat search/select/y until q exits.
 
 During search, q and s are ordinary query characters or assigned labels, not exit/restart commands. Cancel search with Esc first if you want q to invoke your normal copy-mode exit binding. With an exiting y binding, re-enter copy-mode before using s again.
 
-## Syntax Selection (0.2.0)
+## Syntax Selection
 
 | Key | Purpose | While Active |
 | --- | --- | --- |
@@ -170,7 +205,6 @@ grammar download is needed. Embedded licenses are in THIRD_PARTY_LICENSES.md.
 
 ```sh
 # From the checkout root, in the pane being tested:
-tmux set-option -p @flash-treesitter-language auto
 cat tests/snippets/rust.rs
 # Enter copy-mode, move onto value/42, and press S; or use R and search 42.
 # If detection is ambiguous, choose an explicit language:
@@ -178,6 +212,8 @@ tmux set-option -p @flash-treesitter-language rust
 # Remove the pane override to inherit the global setting:
 tmux set-option -pu @flash-treesitter-language
 ```
+
+`auto` is the default; no language command is needed for normal use. An explicit pane override remains active until changed or unset.
 
 See [all 15 fixtures and commands](tests/snippets/README.md). Canonical overrides
 are `rust`, `python`, `javascript`, `typescript`, `tsx`, `json`, `bash`, `c`, `cpp`,
@@ -195,33 +231,9 @@ injections, cross-window operations, editor operator-pending mode, and Neovim's
 zero-cell inline virtual labels are not supported. This is core workflow
 compatibility, not complete flash.nvim equivalence.
 
-### Syntax Walkthrough Screenshots
-
-Captured during manual testing; copied declaration/function endpoints were
-verified by the tester. The first image is a cropped prompt legend.
-
-![R search for 42 with labels for enclosing syntax ranges](assets/screenshots/4-treesitter-search-labels.png)
-
-![Confirmed function selection excluding the shell command](assets/screenshots/5-treesitter-function-selection.png)
-
-![S node-range preview with boundary labels](assets/screenshots/6-treesitter-range-preview.png)
-
-### Upgrading From 0.1.0
-
-The default search key changes from `S` to `s`; `S` and `R` now select syntax.
-A running server may retain `@flash-key S` even after removing it from the config.
-Set `@flash-key s` explicitly or unset it before reloading. Conflicting trigger
-keys are rejected; explicitly configured keys are never silently rewritten.
-Only plugin-owned old bindings are removed; user replacements are preserved on
-reload. These defaults replace native copy-mode actions at `s`, `S`, and `R`.
-
-The checkout is prepared for 0.2.0; a public v0.2.0 Release is not implied.
-Keep `@flash-bin` set for local tests. Use the pinned-release installation
-instructions only with a tag whose matching public Release already exists.
-
 ## Configuration
 
-Configure options **before TPM initialization or manual plugin loading**. Unset options receive defaults; user values are not overwritten.
+Configure options **before TPM initialization or manual plugin loading**. Unset options receive defaults; user values are not overwritten. Trigger keys must be distinct. The plugin replaces native copy-mode actions at the configured keys and preserves user-replaced bindings on reload.
 
 ```tmux
 set -g @flash-key 's'
@@ -259,7 +271,7 @@ python3 tests/publish_test.py
 python3 scripts/check-release.py --binary target/debug/flash-tmux
 ```
 
-Maintainers also run `python3 scripts/check-release.py --tag v0.1.0` before pushing a release tag, using the intended version. Bootstrap tests mock GitHub downloads and exercise the entrypoint in an isolated tmux server. Publishing tests mock `gh`, including draft recovery and refusal to overwrite public releases; they do not publish anything.
+Maintainers also run `python3 scripts/check-release.py --tag v0.2.0` before pushing a release tag, using the intended version. Bootstrap tests mock GitHub downloads and exercise the entrypoint in an isolated tmux server. Publishing tests mock `gh`, including draft recovery and refusal to overwrite public releases; they do not publish anything.
 
 The Python terminal tests create unique, disposable tmux servers and PTYs, never your live session. Clipboard operations in tests are replaced with local temporary-file commands. Neovim geometry coverage runs when `nvim` is available. Installer tests use local download mocks and require no network.
 
