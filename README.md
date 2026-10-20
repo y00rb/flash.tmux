@@ -65,6 +65,7 @@ The first search locates the declaration; `0` moves to the line start and `v` an
 
 ## Requirements
 
+- [TPM](https://github.com/tmux-plugins/tpm) for the recommended plugin-manager installation; manual installation is also supported (see Installation below).
 - tmux 3.3 or newer with popup support; currently tested locally on tmux 3.6a, macOS arm64.
 - A visible tmux status line at the top or bottom. Search uses the message line for its prompt so that no source row is hidden. `status off` is rejected without modifying the pane.
 - A true-color terminal for the default Catppuccin Frappe colors.
@@ -81,6 +82,77 @@ The first search locates the declaration; `0` moves to the line start and `v` an
 - **Selection-aware copying**: ordinary search extends an existing selection; syntax selection creates an exact characterwise range. Your own copy bindings and clipboard setup stay in control.
 - **Active-pane isolation**: search and syntax navigation stay within the visible content of the current pane, without swapping or resizing it.
 - **Safe previews and cancellation**: previews leave the real cursor and selection untouched; Esc/Ctrl+C cancels, and changed viewport/state invalidates pending syntax actions.
+
+## Installation With TPM
+
+[TPM (Tmux Plugin Manager)](https://github.com/tmux-plugins/tpm) is the recommended installation method. If TPM is already configured, add this line **before** its initialization line, reload your tmux configuration, then press `prefix + I`:
+
+```tmux
+set -g @plugin 'y00rb/flash.tmux'
+```
+
+### If TPM Is Not Installed
+
+Clone TPM from a shell:
+
+```sh
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+```
+
+Add the following to `~/.tmux.conf`. If you use a different configuration file, edit and reload that file instead. Keep TPM initialization at the **end** of the configuration, after plugin options and declarations:
+
+```tmux
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'y00rb/flash.tmux'
+
+# Keep this at the end of tmux.conf.
+run '~/.tmux/plugins/tpm/tpm'
+```
+
+From a shell inside tmux, reload the configuration:
+
+```sh
+tmux source-file ~/.tmux.conf
+```
+
+Then press `prefix + I` (uppercase I, normally `Ctrl+b` followed by `Shift+i`). TPM installs and loads the plugin. No Rust toolchain is needed for supported prebuilt platforms, but the matching public GitHub Release must exist.
+
+### Prebuilt Binaries and Updates
+
+The unpinned declaration follows the repository's default branch. Use TPM's `prefix + U` to update, then reload your configuration. Wait for the public Release matching the checkout's `VERSION` before updating. The entrypoint synchronizes the binary when loaded; an unavailable Release reports an error instead of using an incompatible old binary.
+
+TPM clones the plugin; `flash.tmux` installs the binary required by the checked-out `VERSION` into the plugin's `bin/` directory. It identifies OWNER/REPO from the public GitHub HTTPS/SSH origin, never downloads `latest`, and does not require Rust. A compatible installed binary is reused without network access. Private/authenticated release downloads are not supported automatically.
+
+### Installation Without TPM
+
+TPM is not a runtime dependency. To use prebuilt binaries without a plugin manager:
+
+```sh
+git clone https://github.com/y00rb/flash.tmux.git ~/.tmux/plugins/flash.tmux
+```
+
+Add this to your tmux configuration instead of a TPM plugin declaration:
+
+```tmux
+run-shell 'sh ~/.tmux/plugins/flash.tmux/flash.tmux'
+```
+
+Reload the configuration. The entrypoint downloads the matching prebuilt binary just as it does under TPM. Choose either TPM loading or manual loading, not both. For a source build or offline installation, see the source-installation section below.
+
+For local development, keep `@flash-bin` set. Remove that override from your config and run `tmux set-option -gu @flash-bin` before reloading to test a Release install; deleting a config line alone does not clear a running tmux server's option. If a download fails, wait until the Release is available and reload the plugin, or run `sh scripts/ensure.sh` from its directory. Search never downloads.
+
+You can also install a specific published version manually:
+
+```sh
+# Run from the installed plugin directory; substitute the actual repository/tag.
+sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
+```
+
+The installer chooses macOS arm64/x86_64 or Linux arm64/x86_64 musl, verifies SHA-256 and the program version, then replaces `bin/flash-tmux` atomically and records its version/platform in `bin/install-info`. It preserves the prior binary if download, verification or execution fails. Concurrent installers are serialized; if an installer is forcibly killed, inspect `bin/.install-lock/pid` and confirm its process has exited before removing that stale lock and retrying. Unsupported/offline systems can use a source build with `@flash-bin`.
+
+Publishing is triggered by pushing a `vX.Y.Z` tag. `VERSION`, Cargo.toml and the tag must agree. Release depends on successful checks, builds all four targets, verifies binary versions and prepares complete draft assets before publishing. Failed draft uploads can resume; published releases are never overwritten. Use a new version for fixes. Prereleases are marked accordingly; ordinary branch pushes never publish a Release.
+
+Linux musl builds aim to avoid glibc-version dependence; they are not a guarantee of support for every kernel, terminal or distribution. Checksums protect against corruption, not a compromised publisher or release channel.
 
 ## Local Development / Source Installation
 
@@ -104,42 +176,6 @@ Reload your tmux configuration to load the plugin. After source changes, run `ca
 For an optimized build, run `cargo build --release` and point `@flash-bin` to `/path/to/flash.tmux/target/release/flash-tmux` instead.
 
 An explicit `@flash-bin` always bypasses release downloads, even if the path is invalid (an error is shown instead). Loading never runs Cargo, and pressing s never builds or downloads.
-
-## TPM and Prebuilt Releases
-
-Configure TPM with a published version tag:
-
-```tmux
-# Put this before TPM initialization; use a published version tag.
-set -g @plugin 'y00rb/flash.tmux#v0.2.0'
-```
-
-Press `prefix + I`. TPM clones and loads the plugin; `flash.tmux` then installs the binary required by the checked-out `VERSION` into the plugin's `bin/` directory. It identifies OWNER/REPO from the public GitHub HTTPS/SSH origin, never downloads `latest`, and does not require Rust. A compatible installed binary is reused without network access. Private/authenticated release downloads are not supported automatically.
-
-Pinned tags are detached checkouts: TPM's `prefix + U` uses `git pull` and does not switch them to a new tag. Change the configured tag, then explicitly fetch/check out the new tag in the installed plugin directory and reload the plugin:
-
-```sh
-PLUGIN_DIR='/path/to/tpm/plugins/flash.tmux'
-git -C "$PLUGIN_DIR" fetch origin tag v0.2.0
-git -C "$PLUGIN_DIR" checkout --detach v0.2.0
-```
-
-Use the actual directory/version and inspect local changes before checkout; do not force it. Verify the checkout and `bin/flash-tmux --version` agree after loading. For branch-tracking installs without `#tag`, `prefix + U` can pull branch changes; wait for the matching Release to exist before updating. The entrypoint synchronizes the binary when loaded. An unavailable release reports an error; an incompatible old executable is not used for search.
-
-For local development, keep `@flash-bin` set. Remove that override from your config and run `tmux set-option -gu @flash-bin` before reloading to test a Release install; deleting a config line alone does not clear a running tmux server's option. If a download fails, wait until the Release is available and reload the plugin, or run `sh scripts/ensure.sh` from its directory. Search never downloads.
-
-You can also install a specific published version manually:
-
-```sh
-# Run from the installed plugin directory; substitute the actual repository/tag.
-sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
-```
-
-The installer chooses macOS arm64/x86_64 or Linux arm64/x86_64 musl, verifies SHA-256 and the program version, then replaces `bin/flash-tmux` atomically and records its version/platform in `bin/install-info`. It preserves the prior binary if download, verification or execution fails. Concurrent installers are serialized; if an installer is forcibly killed, inspect `bin/.install-lock/pid` and confirm its process has exited before removing that stale lock and retrying. Unsupported/offline systems can use a source build with `@flash-bin`.
-
-Publishing is triggered by pushing a `vX.Y.Z` tag. `VERSION`, Cargo.toml and the tag must agree. Release depends on successful checks, builds all four targets, verifies binary versions and prepares complete draft assets before publishing. Failed draft uploads can resume; published releases are never overwritten. Use a new version for fixes. Prereleases are marked accordingly; ordinary branch pushes never publish a Release.
-
-Linux musl builds aim to avoid glibc-version dependence; they are not a guarantee of support for every kernel, terminal or distribution. Checksums protect against corruption, not a compromised publisher or release channel.
 
 ## Usage
 

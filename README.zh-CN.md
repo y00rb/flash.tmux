@@ -65,6 +65,7 @@ s → flash-prompt-fg → Enter → j → $
 
 ## 环境要求
 
+- 推荐安装方式需要 [TPM](https://github.com/tmux-plugins/tpm)；尚未安装时按下方步骤安装，也可选择不依赖 TPM 的手动安装。
 - tmux 3.3 或更新版本，支持 popup。目前本机验证环境为 macOS arm64、tmux 3.6a。
 - 顶部或底部需要有可见的 tmux 状态栏。搜索提示显示在消息栏中，避免遮挡原始内容行。`status off` 时插件会给出错误提示，不修改原 pane。
 - 支持真彩色的终端，以显示默认的 Catppuccin Frappe 配色。
@@ -81,6 +82,77 @@ s → flash-prompt-fg → Enter → j → $
 - **保留复制习惯**：普通搜索延伸已有选区，语法选择建立精确的字符选区；复制绑定和剪贴板仍由你的配置控制。
 - **当前窗格隔离**：只处理当前窗格的可见内容，不交换或调整原窗格大小。
 - **安全预览与取消**：预览不修改真实光标和选区；Esc/Ctrl+C 取消，视口或状态变化会使待执行的语法操作失效。
+
+## 使用 TPM 安装
+
+推荐通过 [TPM（Tmux Plugin Manager）](https://github.com/tmux-plugins/tpm) 安装。已经配置 TPM 时，只需在 TPM 初始化行**之前**添加以下声明，重载 tmux 配置，再按 `prefix + I`：
+
+```tmux
+set -g @plugin 'y00rb/flash.tmux'
+```
+
+### 尚未安装 TPM
+
+先在 shell 中克隆 TPM：
+
+```sh
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+```
+
+将以下内容加入 `~/.tmux.conf`。如果使用其他配置路径，请编辑并重载实际的配置文件。TPM 初始化必须放在配置文件**末尾**，位于插件选项和插件声明之后：
+
+```tmux
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'y00rb/flash.tmux'
+
+# 放在 tmux.conf 的末尾。
+run '~/.tmux/plugins/tpm/tpm'
+```
+
+在 tmux 内的 shell 中重载配置：
+
+```sh
+tmux source-file ~/.tmux.conf
+```
+
+然后按 `prefix + I`，其中 I 为大写，默认操作是先按 `Ctrl+b`，松开后再按 `Shift+i`。TPM 会安装并加载插件。支持预编译程序的平台无需 Rust 工具链，但必须已有对应的公开 GitHub Release。
+
+### 预编译程序与更新
+
+不带标签的插件声明跟踪仓库默认分支。使用 TPM 的 `prefix + U` 更新后，重新加载配置；更新前应确认 checkout 的 `VERSION` 已有对应公开 Release。入口脚本加载时会同步二进制版本；Release 不存在时会报错，不使用不兼容的旧程序。
+
+TPM 负责克隆插件；`flash.tmux` 将 checkout 中 `VERSION` 对应的程序安装到插件的 `bin/` 目录。仓库地址从公开 GitHub 仓库的 HTTPS/SSH origin 中识别，不下载 `latest`，不需要 Rust；已有兼容程序时不联网。私有仓库或需要鉴权的 Release 不支持自动下载。
+
+### 不使用 TPM 安装
+
+TPM 不是运行时依赖。不使用插件管理器也可以安装预编译程序：
+
+```sh
+git clone https://github.com/y00rb/flash.tmux.git ~/.tmux/plugins/flash.tmux
+```
+
+在 tmux 配置中使用以下手动加载行，不添加 TPM 插件声明：
+
+```tmux
+run-shell 'sh ~/.tmux/plugins/flash.tmux/flash.tmux'
+```
+
+重载配置后，入口脚本会像 TPM 安装时一样下载对应的预编译程序。TPM 加载和手动加载二选一，不要重复配置。源码构建或离线安装见后面的源码安装章节。
+
+本地开发保留 `@flash-bin`；测试 Release 安装时，从配置中移除这个覆盖，并执行 `tmux set-option -gu @flash-bin` 后再重载。只删除配置行不会清除正在运行的 tmux server 中的选项。下载失败时，等待 Release 公开后重新加载插件，或者在插件目录执行 `sh scripts/ensure.sh` 重试。搜索按键本身不触发下载。
+
+也可以手动安装某个已发布版本：
+
+```sh
+# 在安装后的插件目录中执行，替换为实际的仓库和版本标签。
+sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
+```
+
+安装脚本会选择对应的 macOS arm64/x86_64 或 Linux arm64/x86_64 musl 程序，验证 SHA-256 和程序版本，然后原子替换 `bin/flash-tmux`，并在 `bin/install-info` 中记录版本与平台。下载、校验或运行失败时会保留原有程序。并发安装会串行处理；若安装进程被强制结束，需要先检查 `bin/.install-lock/pid`，确认进程已退出，再删除遗留锁并重试。不支持的平台或离线环境可以源码构建并设置 `@flash-bin`。
+
+推送 `vX.Y.Z` 标签会触发发布；`VERSION`、Cargo.toml 与标签必须一致。发布依赖检查成功，再构建四个平台、核对程序版本，准备完整的草稿附件后公开 Release。上传失败的草稿可重试；已公开版本不覆盖，修复问题应发布新版本。预发布会标记为 prerelease，普通分支 push 不发布 Release。
+
+Linux musl 构建旨在减少对 glibc 版本的依赖，并不保证适用于所有内核、终端或发行版。校验和用于检测文件损坏，不能防范发布者或发布渠道被入侵。
 
 ## 本地开发与源码安装
 
@@ -104,42 +176,6 @@ run-shell 'sh /path/to/flash.tmux/flash.tmux'
 需要优化构建时，执行 `cargo build --release`，并将 `@flash-bin` 改为 `/path/to/flash.tmux/target/release/flash-tmux`。
 
 显式设置 `@flash-bin` 后始终跳过 Release 下载，即使路径无效也只会报错。加载插件不会运行 Cargo，按 s 搜索也不会构建或下载。
-
-## TPM 与预编译版本
-
-在 TPM 中配置已发布的版本标签：
-
-```tmux
-# 放在 TPM 初始化之前，使用已发布的版本标签。
-set -g @plugin 'y00rb/flash.tmux#v0.2.0'
-```
-
-按 `prefix + I`。TPM 克隆并加载插件后，`flash.tmux` 会把当前源码中 `VERSION` 对应的程序安装到插件的 `bin/` 目录。仓库地址从公开 GitHub 仓库的 HTTPS/SSH origin 中识别，不下载 `latest`，不需要 Rust；已有兼容程序时不联网。私有仓库或需要鉴权的 Release 不支持自动下载。
-
-固定标签安装处于 detached HEAD：TPM 的 `prefix + U` 使用 `git pull`，不会切换到新标签。更新时修改配置中的标签，再在已安装的插件目录明确获取并切换新标签，最后重新加载插件：
-
-```sh
-PLUGIN_DIR='/path/to/tpm/plugins/flash.tmux'
-git -C "$PLUGIN_DIR" fetch origin tag v0.2.0
-git -C "$PLUGIN_DIR" checkout --detach v0.2.0
-```
-
-使用实际目录和版本，切换前检查本地修改，不要强制覆盖。加载后检查实际 checkout 与 `bin/flash-tmux --version` 一致。不带 `#tag` 的分支跟踪安装可以使用 `prefix + U` 拉取更新，但要等对应 Release 存在后再更新。插件加载时会同步二进制版本。Release 不存在时会报错，不会让搜索继续使用不兼容的旧程序。
-
-本地开发保留 `@flash-bin`；测试 Release 安装时，从配置中移除这个覆盖，并执行 `tmux set-option -gu @flash-bin` 后再重载。只删除配置行不会清除正在运行的 tmux server 中的选项。下载失败时，等待 Release 公开后重新加载插件，或者在插件目录执行 `sh scripts/ensure.sh` 重试。搜索按键本身不触发下载。
-
-也可以手动安装某个已发布版本：
-
-```sh
-# 在安装后的插件目录中执行，替换为实际的仓库和版本标签。
-sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
-```
-
-安装脚本会选择对应的 macOS arm64/x86_64 或 Linux arm64/x86_64 musl 程序，验证 SHA-256 和程序版本，然后原子替换 `bin/flash-tmux`，并在 `bin/install-info` 中记录版本与平台。下载、校验或运行失败时会保留原有程序。并发安装会串行处理；若安装进程被强制结束，需要先检查 `bin/.install-lock/pid`，确认进程已退出，再删除遗留锁并重试。不支持的平台或离线环境可以源码构建并设置 `@flash-bin`。
-
-推送 `vX.Y.Z` 标签会触发发布；`VERSION`、Cargo.toml 与标签必须一致。发布依赖检查成功，再构建四个平台、核对程序版本，准备完整的草稿附件后公开 Release。上传失败的草稿可重试；已公开版本不覆盖，修复问题应发布新版本。预发布会标记为 prerelease，普通分支 push 不发布 Release。
-
-Linux musl 构建旨在减少对 glibc 版本的依赖，并不保证适用于所有内核、终端或发行版。校验和用于检测文件损坏，不能防范发布者或发布渠道被入侵。
 
 ## 使用方法
 
