@@ -135,6 +135,10 @@ pub fn start_mode(pane: &str, client: &str, mode: crate::model::InteractionMode)
         &shell,
     ]);
     let _ = tmux::command(&["display-message", "-c", client, "-d", "1", ""]);
+    let error_path = result_path.with_extension("error");
+    if error_path.exists() {
+        return Err(fs::read_to_string(error_path)?.into());
+    }
     result?;
     if result_path.exists() {
         let outcome: Outcome = serde_json::from_slice(&fs::read(&result_path)?)?;
@@ -148,6 +152,21 @@ pub fn start_mode(pane: &str, client: &str, mode: crate::model::InteractionMode)
 }
 
 pub fn overlay(request_path: &Path, result_path: &Path) -> Result<()> {
+    let outcome = overlay_inner(request_path, result_path);
+    if let Err(error) = &outcome {
+        // Popup stderr is not forwarded by tmux; preserve the cause in our
+        // private session directory for the parent launcher to report.
+        if let Some(parent) = result_path.parent()
+            && let Ok(mut file) = tempfile::NamedTempFile::new_in(parent)
+            && file.write_all(error.to_string().as_bytes()).is_ok()
+        {
+            let _ = file.persist(result_path.with_extension("error"));
+        }
+    }
+    outcome
+}
+
+fn overlay_inner(request_path: &Path, result_path: &Path) -> Result<()> {
     let request: Request = serde_json::from_slice(&fs::read(request_path)?)?;
     if request.snapshot.version != 2 {
         return Err("unsupported snapshot format".into());

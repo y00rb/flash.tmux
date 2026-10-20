@@ -14,6 +14,8 @@ if [ ! -x "$binary" ]; then
     exit 1
 fi
 if ! error=$("$binary" start --pane "$1" --client "$2" --mode "${3:-search}" 2>&1); then
-    tmux display-message -l -c "$2" "flash-tmux: $error"
-    exit 1
+    tmux display-message -l -c "$2" "flash-tmux: ${error#flash-tmux: }"
+    # The diagnostic is already visible; a nonzero run-shell exit would replace
+    # it with tmux's generic "returned 1" message.
+    exit 0
 fi

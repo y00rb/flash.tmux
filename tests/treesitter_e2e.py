@@ -81,6 +81,25 @@ class SyntaxWorkflows(unittest.TestCase):
                 t.move('copy-selection')
                 self.assertEqual(t.command('show-buffer'), '\n'.join(rows))
 
+    def test_auto_detection_failure_reports_cause_without_moving_cursor(self):
+        with Tmux() as t:
+            t.fixture(['ordinary prose without a language declaration', 'END'])
+            t.command('set-option', '-p', '-t', t.pane, '@flash-treesitter-language', 'auto')
+            t.command('copy-mode', '-t', t.pane)
+            before = t.cursor()
+            process = invoke(t, 'start', '--mode', 'treesitter')
+            _, stderr = process.communicate(timeout=5)
+            self.assertNotEqual(process.returncode, 0)
+            self.assertIn('ambiguous syntax language', stderr.decode())
+            self.assertNotIn('tmux display-popup:', stderr.decode())
+            self.assertEqual(t.cursor(), before)
+            t.command('set', '-g', '@flash-bin', str(BINARY))
+            env = dict(os.environ, TMUX=t.command('display', '-p', '#{socket_path},#{pid},0').strip())
+            result = subprocess.run(['sh', str(ROOT / 'scripts/launch.sh'), t.pane, t.client, 'treesitter'], env=env, capture_output=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            self.assertIn('ambiguous syntax language', t.command('show-messages'))
+            self.assertEqual(t.cursor(), before)
+
     def test_cancel_preserves_existing_selection(self):
         with Tmux() as t:
             t.fixture(['fn main() { let value = 42; }', 'END'])
