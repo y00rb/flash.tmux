@@ -22,6 +22,8 @@ pub struct SyntaxNode {
 pub struct ParsedSyntax {
     pub language: LanguageId,
     tree: Tree,
+    offset: usize,
+    fallback: Option<Tree>,
 }
 
 impl ParsedSyntax {
@@ -61,7 +63,12 @@ impl ParsedSyntax {
         if Instant::now() >= deadline {
             return Err("syntax parsing deadline expired".into());
         }
-        Ok(Self { language, tree })
+        Ok(Self {
+            language,
+            tree,
+            offset: 0,
+            fallback: None,
+        })
     }
 
     pub fn has_errors(&self) -> bool {
@@ -69,14 +76,23 @@ impl ParsedSyntax {
     }
 
     pub fn ancestors_at(&self, byte: usize) -> Vec<SyntaxNode> {
-        let root = self.tree.root_node();
-        if byte >= root.end_byte() {
+        let local = byte
+            .checked_sub(self.offset)
+            .filter(|byte| *byte < self.tree.root_node().end_byte());
+        let (root, offset, relative) = if let Some(relative) = local {
+            (self.tree.root_node(), self.offset, relative)
+        } else if let Some(tree) = &self.fallback {
+            (tree.root_node(), 0, byte)
+        } else {
+            return vec![];
+        };
+        if relative >= root.end_byte() {
             return vec![];
         }
-        let mut current = root.named_descendant_for_byte_range(byte, byte);
+        let mut current = root.named_descendant_for_byte_range(relative, relative);
         let mut nodes: Vec<SyntaxNode> = vec![];
         while let Some(node) = current {
-            let bytes = node.byte_range();
+            let bytes = (node.start_byte() + offset)..(node.end_byte() + offset);
             if node.is_named()
                 && !node.is_error()
                 && !node.is_missing()

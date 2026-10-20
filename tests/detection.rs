@@ -136,6 +136,31 @@ fn cursor_local_detection_handles_dense_terminal_history_within_budget() {
 }
 
 #[test]
+fn cursor_detection_handles_go_among_prior_code_and_shell_history() {
+    use flash_tmux::{model::ScreenPoint, syntax::detect::resolve_at};
+    let history = "user@host ~/checkout $ tmux set-option -p @flash-treesitter-language auto\nfn old() { let value = 1; }\n".repeat(20);
+    let text = format!(
+        "{history}package sample\n\nfunc describe(value int) int {{\n    if value > 0 {{\n        return value + 1\n    }}\n    return 0\n}}\nuser@host ~/checkout $\n"
+    );
+    let doc = source(&text);
+    let parsed = resolve_at(
+        &doc,
+        LanguageChoice::Auto,
+        ScreenPoint { row: 44, cell: 15 },
+        Duration::from_millis(250),
+    )
+    .unwrap();
+    assert_eq!(parsed.language, LanguageId::Go);
+    let nodes = parsed.ancestors_at(doc.byte_at(ScreenPoint { row: 44, cell: 15 }).unwrap());
+    assert!(nodes.iter().any(|node| node.kind == "function_declaration"));
+    assert!(
+        nodes
+            .iter()
+            .all(|node| node.bytes.start >= text.find("func describe").unwrap())
+    );
+}
+
+#[test]
 fn no_detection_with_expired_budget() {
     assert!(detect(&source("fn main() {}"), Duration::ZERO).is_err());
 }

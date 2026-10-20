@@ -15,7 +15,10 @@ fn indicator(language: LanguageId, kind: &str) -> bool {
         LanguageId::Json => kind == "pair",
         LanguageId::Bash => matches!(kind, "function_definition" | "if_statement"),
         LanguageId::C | LanguageId::Cpp => kind == "function_definition",
-        LanguageId::Go => kind == "package_clause",
+        LanguageId::Go => matches!(
+            kind,
+            "package_clause" | "function_declaration" | "method_declaration"
+        ),
         LanguageId::Lua => kind == "function_declaration",
         LanguageId::Ruby => matches!(kind, "method" | "singleton_method"),
         LanguageId::Zig => kind == "function_declaration",
@@ -25,14 +28,13 @@ fn indicator(language: LanguageId, kind: &str) -> bool {
 }
 
 fn score(parsed: &ParsedSyntax, text: &str) -> Option<usize> {
-    let mut error_bytes = vec![false; text.len()];
+    let mut errors = vec![false; text.len()];
     let mut evidence = false;
     let mut stack = vec![parsed.tree.root_node()];
     while let Some(node) = stack.pop() {
         if node.is_error() || node.is_missing() {
-            error_bytes[node.byte_range()].fill(true);
+            errors[node.byte_range()].fill(true);
         }
-        // Never mine apparent language declarations out of comments or literals.
         if node.kind().contains("comment") || node.kind().contains("string") {
             continue;
         }
@@ -47,7 +49,7 @@ fn score(parsed: &ParsedSyntax, text: &str) -> Option<usize> {
     let mut bad = 0;
     for (offset, ch) in text.char_indices().filter(|(_, ch)| !ch.is_whitespace()) {
         total += ch.len_utf8();
-        if error_bytes[offset] {
+        if errors[offset] {
             bad += ch.len_utf8();
         }
     }
@@ -56,6 +58,43 @@ fn score(parsed: &ParsedSyntax, text: &str) -> Option<usize> {
     }
     let quality = (total - bad) * 100 / total;
     (quality >= 80).then_some(quality)
+}
+
+fn local_score(parsed: &ParsedSyntax, text: &str, byte: usize) -> bool {
+    let mut current = parsed
+        .tree
+        .root_node()
+        .named_descendant_for_byte_range(byte, byte);
+    while let Some(node) = current {
+        if node.start_byte() <= byte
+            && byte < node.end_byte()
+            && !node.has_error()
+            && !node.is_missing()
+            && text[..node.start_byte()].trim().is_empty()
+        {
+            let mut stack = vec![node];
+            while let Some(child) = stack.pop() {
+                if child.kind().contains("comment") || child.kind().contains("string") {
+                    continue;
+                }
+                if indicator(parsed.language, child.kind()) {
+                    return true;
+                }
+                let mut cursor = child.walk();
+                stack.extend(child.children(&mut cursor));
+            }
+        }
+        current = node.parent();
+    }
+    false
+}
+
+fn ambiguous() -> crate::Error {
+    format!(
+        "ambiguous syntax language; set @flash-treesitter-language to {}",
+        LanguageId::ALL.map(LanguageId::name).join(", ")
+    )
+    .into()
 }
 
 pub fn resolve(
@@ -75,25 +114,6 @@ pub fn resolve_at(
     resolve_inner(document, choice, document.byte_at(origin), budget)
 }
 
-fn local_score(parsed: &ParsedSyntax, byte: usize) -> Option<usize> {
-    let mut current = parsed
-        .tree
-        .root_node()
-        .named_descendant_for_byte_range(byte, byte);
-    while let Some(node) = current {
-        if node.start_byte() <= byte
-            && byte < node.end_byte()
-            && !node.has_error()
-            && !node.is_missing()
-            && indicator(parsed.language, node.kind())
-        {
-            return Some(100);
-        }
-        current = node.parent();
-    }
-    None
-}
-
 fn resolve_inner(
     document: &SourceDocument,
     choice: LanguageChoice,
@@ -108,111 +128,90 @@ fn resolve_inner(
             deadline.saturating_duration_since(Instant::now()),
         );
     }
-    let mut candidates = Vec::new();
     if let Some(byte) = focus {
-        // `fn` is shared by Rust and Zig. Validate both grammars against the
-        // enclosing declaration before spending time on unrelated parsers.
-        let starts = std::iter::once(0)
-            .chain(
-                document.text()[..byte]
-                    .match_indices('\n')
-                    .map(|(index, _)| index + 1),
-            )
-            .collect::<Vec<_>>();
+        // Parse bounded local fragments, not a full-screen prefix padded with
+        // blanks for every candidate. Tree byte offsets are translated back.
+        let text = document.text();
+        let starts: Vec<_> = std::iter::once(0)
+            .chain(text[..byte].match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+        let end = text[byte..]
+            .match_indices('\n')
+            .nth(16)
+            .map_or(text.len(), |(i, _)| byte + i);
         for start in starts.into_iter().rev().take(32) {
-            let line = document.text()[start..].lines().next().unwrap_or("").trim();
-            let words = line.split_whitespace().take(5).collect::<Vec<_>>();
-            if !words.contains(&"fn") {
+            if end - start > 8192 {
+                break;
+            }
+            let line = text[start..].lines().next().unwrap_or("").trim();
+            if !line.contains(['(', '{'])
+                && ![
+                    "def ",
+                    "class ",
+                    "struct ",
+                    "impl ",
+                    "function ",
+                    "local ",
+                    "package ",
+                    "<?php",
+                ]
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+            {
                 continue;
             }
-            let mut text = String::with_capacity(document.text().len());
-            for ch in document.text()[..start].bytes() {
-                text.push(if ch == b'\n' { '\n' } else { ' ' });
-            }
-            text.push_str(&document.text()[start..]);
-            let mut local = Vec::new();
-            for language in [LanguageId::Rust, LanguageId::Zig] {
+            let mut candidates = Vec::new();
+            for language in LanguageId::ALL {
                 let parsed = ParsedSyntax::parse_text(
                     language,
-                    &text,
+                    &text[start..end],
                     deadline.saturating_duration_since(Instant::now()),
                 )?;
-                if local_score(&parsed, byte).is_some() {
-                    local.push(parsed);
+                if local_score(&parsed, &text[start..end], byte - start) {
+                    let strength = if matches!(language, LanguageId::C | LanguageId::Cpp) {
+                        100
+                    } else {
+                        120
+                    };
+                    candidates.push((strength, parsed));
                 }
             }
-            if local.len() == 1 {
-                return Ok(local.remove(0));
-            }
-            if local.len() > 1 {
-                return Err("ambiguous syntax language (rust or zig); set @flash-treesitter-language explicitly".into());
-            }
-        }
-    }
-    for language in LanguageId::ALL {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return Err("syntax language detection deadline expired; set @flash-treesitter-language explicitly".into());
-        }
-        let mut parsed = ParsedSyntax::parse(language, document, remaining)?;
-        let mut quality = match focus {
-            Some(byte) => local_score(&parsed, byte).or_else(|| {
-                (!parsed.has_errors())
-                    .then(|| score(&parsed, document.text()))
-                    .flatten()
-            }),
-            None => score(&parsed, document.text()),
-        };
-        if quality.is_none()
-            && let Some(byte) = focus
-        {
-            // A shell command preceding `cat` can make a parser consume the
-            // following declaration as an erroneous header. Try logical-line
-            // starts, preserving every byte offset with blank prefix padding.
-            let starts: Vec<_> = document.text()[..byte]
-                .match_indices('\n')
-                .map(|(index, _)| index + 1)
-                .rev()
-                .take(32)
-                .filter(|start| {
-                    let line = document.text()[*start..]
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .trim();
-                    // Only a cheap admission filter; the grammar must still
-                    // prove a valid enclosing declaration before acceptance.
-                    line.contains(['(', '{'])
-                        || [
-                            "def ",
-                            "class ",
-                            "struct ",
-                            "impl ",
-                            "function ",
-                            "local ",
-                            "package ",
-                            "<?php",
-                        ]
+            // Reserved declaration syntax is stronger evidence than C/C++
+            // treating an unknown keyword such as `fn` as a typedef name.
+            candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
+            if candidates.len() > 1 && candidates[0].0 == candidates[1].0 {
+                return Err(format!(
+                    "ambiguous syntax language ({}); set @flash-treesitter-language explicitly",
+                    candidates
                         .iter()
-                        .any(|prefix| line.starts_with(prefix))
-                })
-                .collect();
-            for start in starts {
-                let mut text = String::with_capacity(document.text().len());
-                for ch in document.text()[..start].bytes() {
-                    text.push(if ch == b'\n' { '\n' } else { ' ' });
-                }
-                text.push_str(&document.text()[start..]);
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                let recovered = ParsedSyntax::parse_text(language, &text, remaining)?;
-                if let Some(score) = local_score(&recovered, byte) {
-                    quality = Some(score);
-                    parsed = recovered;
-                    break;
-                }
+                        .map(|(_, parsed)| parsed.language.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+            if !candidates.is_empty() {
+                let (_, mut parsed) = candidates.remove(0);
+                let full = ParsedSyntax::parse(
+                    parsed.language,
+                    document,
+                    deadline.saturating_duration_since(Instant::now()),
+                )?;
+                parsed.offset = start;
+                parsed.fallback = Some(full.tree);
+                return Ok(parsed);
             }
         }
-        if let Some(quality) = quality {
+        return Err(ambiguous());
+    }
+    let mut candidates = Vec::new();
+    for language in LanguageId::ALL {
+        let parsed = ParsedSyntax::parse(
+            language,
+            document,
+            deadline.saturating_duration_since(Instant::now()),
+        )?;
+        if let Some(quality) = score(&parsed, document.text()) {
             candidates.push((quality, parsed));
         }
     }
@@ -224,11 +223,7 @@ fn resolve_inner(
     }) {
         return Ok(candidates.remove(0).1);
     }
-    Err(format!(
-        "ambiguous syntax language; set @flash-treesitter-language to {}",
-        LanguageId::ALL.map(LanguageId::name).join(", ")
-    )
-    .into())
+    Err(ambiguous())
 }
 
 pub fn detect(document: &SourceDocument, budget: Duration) -> Result<LanguageId> {
