@@ -1,6 +1,40 @@
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use tree_sitter::Language;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LanguageChoice {
+    #[default]
+    Auto,
+    Explicit(LanguageId),
+}
+impl FromStr for LanguageChoice {
+    type Err = crate::Error;
+    fn from_str(value: &str) -> crate::Result<Self> {
+        let canonical = match value {
+            "auto" => return Ok(Self::Auto),
+            "js" => "javascript",
+            "ts" => "typescript",
+            "sh" => "bash",
+            "rb" => "ruby",
+            "c++" => "cpp",
+            other => other,
+        };
+        LanguageId::ALL
+            .into_iter()
+            .find(|lang| lang.name() == canonical)
+            .map(Self::Explicit)
+            .ok_or_else(|| {
+                format!(
+                    "unsupported @flash-treesitter-language {value}; use auto or {}",
+                    LanguageId::ALL.map(LanguageId::name).join(", ")
+                )
+                .into()
+            })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LanguageId {
     Rust,
     Python,

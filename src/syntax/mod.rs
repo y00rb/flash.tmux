@@ -1,6 +1,7 @@
+pub mod detect;
 pub mod document;
 pub mod registry;
-pub use registry::LanguageId;
+pub use registry::{LanguageChoice, LanguageId};
 
 use crate::Result;
 use std::{

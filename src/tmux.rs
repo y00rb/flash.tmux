@@ -21,7 +21,10 @@ pub fn command(args: &[&str]) -> Result<String> {
 
 pub fn config() -> Result<Config> {
     let mut options = BTreeMap::new();
-    for (name, _) in DEFAULTS {
+    for (name, _) in DEFAULTS
+        .into_iter()
+        .chain([("flash-treesitter-language", "auto")])
+    {
         let option = format!("@{name}");
         if !command(&["show-option", "-gq", &option])?.is_empty() {
             options.insert(
@@ -33,6 +36,22 @@ pub fn config() -> Result<Config> {
         }
     }
     Config::from_options(&options)
+}
+
+pub fn config_for_pane(pane: &str) -> Result<Config> {
+    let mut config = config()?;
+    let local = command(&[
+        "show-options",
+        "-p",
+        "-qv",
+        "-t",
+        pane,
+        "@flash-treesitter-language",
+    ])?;
+    if !local.is_empty() {
+        config.language = local.trim_end_matches('\n').parse()?;
+    }
+    Ok(config)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

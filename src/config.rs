@@ -17,6 +17,7 @@ pub const DEFAULTS: [(&str, &str); 8] = [
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub key: String,
+    pub language: crate::syntax::LanguageChoice,
     pub labels: String,
     pub label_bg: String,
     pub label_fg: String,
@@ -68,6 +69,11 @@ impl Config {
         }
         Ok(Self {
             key: values[0].clone(),
+            language: options
+                .get("flash-treesitter-language")
+                .map(String::as_str)
+                .unwrap_or("auto")
+                .parse()?,
             labels: values[1].clone(),
             label_bg: values[2].clone(),
             label_fg: values[3].clone(),
