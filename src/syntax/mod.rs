@@ -1,3 +1,4 @@
+pub mod document;
 pub mod registry;
 pub use registry::LanguageId;
 
@@ -23,6 +24,14 @@ pub struct ParsedSyntax {
 }
 
 impl ParsedSyntax {
+    pub fn parse(
+        language: LanguageId,
+        source: &document::SourceDocument,
+        budget: Duration,
+    ) -> Result<Self> {
+        Self::parse_text(language, source.text(), budget)
+    }
+
     pub fn parse_text(language: LanguageId, text: &str, budget: Duration) -> Result<Self> {
         if text.len() > MAX_SOURCE_BYTES {
             return Err("syntax source exceeds 256 KiB".into());

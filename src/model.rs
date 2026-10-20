@@ -8,6 +8,12 @@ pub struct ScreenPoint {
     pub cell: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreenRange {
+    pub start: ScreenPoint,
+    pub end: ScreenPoint,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Viewport {
     pub rows: Vec<String>,
