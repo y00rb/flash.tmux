@@ -34,6 +34,7 @@ struct SourceCell {
 }
 
 pub struct SourceDocument {
+    view: Viewport,
     text: String,
     cells: Vec<SourceCell>,
 }
@@ -72,7 +73,15 @@ impl SourceDocument {
         if text.len() > super::MAX_SOURCE_BYTES {
             return Err("syntax source exceeds 256 KiB".into());
         }
-        Ok(Self { text, cells })
+        Ok(Self {
+            view: capture.view.clone(),
+            text,
+            cells,
+        })
+    }
+
+    pub fn view(&self) -> &Viewport {
+        &self.view
     }
 
     pub fn text(&self) -> &str {
