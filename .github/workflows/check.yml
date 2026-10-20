@@ -40,6 +40,7 @@ jobs:
       - run: cargo build --locked
       - run: python3 tests/tmux_probe.py
       - run: python3 tests/e2e.py
+      - run: python3 tests/treesitter_e2e.py
       - run: sh tests/install.sh
       - run: python3 tests/bootstrap_test.py
       - run: python3 tests/release_version_test.py

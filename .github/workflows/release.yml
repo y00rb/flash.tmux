@@ -44,6 +44,8 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then
             export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+            export CC_x86_64_unknown_linux_musl=musl-gcc
+            export CC_aarch64_unknown_linux_musl=musl-gcc
           fi
           cargo build --locked --release --target "$TARGET"
           python3 scripts/check-release.py --tag "$RELEASE_TAG" --binary "target/$TARGET/release/flash-tmux"

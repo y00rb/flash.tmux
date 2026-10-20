@@ -1,9 +1,10 @@
 [package]
 name = "flash-tmux"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+rust-version = "1.90"
 license = "MIT"
-description = "Flash-style label navigation in tmux copy-mode"
+description = "Flash-style search and Tree-sitter range selection in tmux copy-mode"
 repository = "https://github.com/y00rb/flash.tmux"
 
 [dependencies]

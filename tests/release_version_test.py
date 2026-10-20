@@ -11,7 +11,7 @@ class Versions(unittest.TestCase):
     def test_repository_version_agrees(self):
         result = subprocess.run(['python3', str(ROOT / 'scripts/check-release.py'), '--root', str(ROOT)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('0.1.0', result.stdout)
+        self.assertIn('0.2.0', result.stdout)
 
     def test_generated_files_ignored_but_docs_remain_unignored(self):
         with tempfile.TemporaryDirectory() as tmp:

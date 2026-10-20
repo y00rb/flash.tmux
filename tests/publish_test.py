@@ -15,12 +15,12 @@ class Publish(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.tag = 'v0.1.0'
+        self.tag = 'v' + (ROOT / 'VERSION').read_text().strip()
         self.script = ROOT / 'scripts/publish.sh'
         self.dist = self.root / 'dist'
         self.dist.mkdir()
         for target in TARGETS:
-            with tarfile.open(self.dist / ('flash-tmux-v0.1.0-' + target + '.tar.gz'), 'w:gz') as archive:
+            with tarfile.open(self.dist / ('flash-tmux-' + self.tag + '-' + target + '.tar.gz'), 'w:gz') as archive:
                 data = b'binary fixture'
                 info = tarfile.TarInfo('flash-tmux')
                 info.size = len(data)
@@ -88,10 +88,11 @@ p.write_text(json.dumps(s))
             shutil.copy(ROOT / 'scripts' / filename, project / 'scripts' / filename)
         (project / 'VERSION').write_text('0.1.0-rc.1' + chr(10))
         (project / 'Cargo.toml').write_text('[package]' + chr(10) + 'version="0.1.0-rc.1"' + chr(10))
+        old_tag = self.tag
         self.tag = 'v0.1.0-rc.1'
         self.script = project / 'scripts/publish.sh'
         for archive in list(self.dist.glob('*.tar.gz')):
-            archive.rename(archive.with_name(archive.name.replace('v0.1.0-', self.tag + '-')))
+            archive.rename(archive.with_name(archive.name.replace(old_tag + '-', self.tag + '-')))
         result = self.publish()
         self.assertEqual(result.returncode, 0, result.stderr)
         edit = [call for call in json.loads(self.state.read_text())['calls'] if call[:2] == ['release', 'edit']][0]

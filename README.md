@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Incremental search and label navigation in tmux copy-mode, inspired by [flash.nvim](https://github.com/folke/flash.nvim) by [folke](https://github.com/folke), with a Rust runtime and a small TPM entrypoint.
+Incremental search, label navigation, and Tree-sitter range selection in tmux copy-mode, inspired by [flash.nvim](https://github.com/folke/flash.nvim) by [folke](https://github.com/folke), with a Rust runtime and a small TPM entrypoint.
 
 ## Screenshots and Walkthrough
 
@@ -10,7 +10,7 @@ Captured in Ghostty with zsh, JetBrains Mono, and the Catppuccin Frappe theme, u
 
 ### 1. Search and Jump Labels
 
-**Steps:** In the repository, run `head -n 16 src/config.rs`. Enter copy-mode with `prefix + [`, press `S`, and type `flash`. Pause before choosing a label.
+**Steps:** In the repository, run `head -n 16 src/config.rs`. Enter copy-mode with `prefix + [`, press `s`, and type `flash`. Pause before choosing a label.
 
 **What to look for:** The blue `⚡` prompt shows the query and match/label counts. Matches are highlighted and pink single-character labels appear beside them. Press one of the displayed labels to jump to that match's start. Labels depend on the current cursor and visible text; use the labels on your screen rather than memorizing those in the image.
 
@@ -21,8 +21,8 @@ Captured in Ghostty with zsh, JetBrains Mono, and the Catppuccin Frappe theme, u
 **Steps:** From the same file output, start in copy-mode with no active selection:
 
 ```text
-S → DEFAULTS: → Enter → 0 → v
-S → flash-prompt-fg → Enter → j → $
+s → DEFAULTS: → Enter → 0 → v
+s → flash-prompt-fg → Enter → j → $
 ```
 
 The first search locates the declaration; `0` moves to the line start and `v` anchors the selection. The second search extends it toward the last option; `j` and `$` include the closing `];` line.
@@ -33,7 +33,7 @@ The first search locates the declaration; `0` moves to the line start and `v` an
 
 ### 3. Search Only the Active Pane
 
-**Steps:** Leave copy-mode and split the window left/right using your tmux binding (`prefix + h` in this setup). Run `head -n 15 Cargo.toml` in the right pane. In the left pane, run `head -n 16 src/config.rs`, enter copy-mode, press `S`, and type `flash-`. Pause before choosing a label.
+**Steps:** Leave copy-mode and split the window left/right using your tmux binding (`prefix + h` in this setup). Run `head -n 15 Cargo.toml` in the right pane. In the left pane, run `head -n 16 src/config.rs`, enter copy-mode, press `s`, and type `flash-`. Pause before choosing a label.
 
 **What to look for:** Only the left pane is dimmed and annotated with matches and labels. The right pane keeps its normal colors and has no search labels. The blue `⚡` prompt shows the query and match/label counts.
 
@@ -44,7 +44,7 @@ The first search locates the declaration; `0` moves to the line start and `v` an
 - tmux 3.3 or newer with popup support; currently tested locally on tmux 3.6a, macOS arm64.
 - A visible tmux status line at the top or bottom. Search uses the message line for its prompt so that no source row is hidden. `status off` is rejected without modifying the pane.
 - A true-color terminal for the default Catppuccin Frappe colors.
-- A compatible prebuilt binary, or Rust/Cargo to build from source. Rust is not needed to run a prebuilt binary. Python 3.11+ is only used by development/release tests.
+- A compatible prebuilt binary, or Rust 1.90+ / Cargo and a C compiler to build from source. Rust is not needed to run a prebuilt binary. Python 3.11+ is only used by development/release tests.
 - For automatic installation: Git, curl, tar, and either sha256sum or shasum. Public GitHub releases must be reachable.
 
 ## Local Development / Source Installation
@@ -68,7 +68,7 @@ Reload your tmux configuration to load the plugin. After source changes, run `ca
 
 For an optimized build, run `cargo build --release` and point `@flash-bin` to `/path/to/flash.tmux/target/release/flash-tmux` instead.
 
-An explicit `@flash-bin` always bypasses release downloads, even if the path is invalid (an error is shown instead). Loading never runs Cargo, and pressing S never builds or downloads.
+An explicit `@flash-bin` always bypasses release downloads, even if the path is invalid (an error is shown instead). Loading never runs Cargo, and pressing s never builds or downloads.
 
 ## TPM and Prebuilt Releases
 
@@ -109,10 +109,10 @@ Linux musl builds aim to avoid glibc-version dependence; they are not a guarante
 ## Usage
 
 1. Enter tmux copy-mode, normally `prefix + [`.
-2. Press **S** (Shift+s).
+2. Press **s** (lowercase).
 3. Type visible text to narrow literal matches.
 4. Press a displayed label to jump to the start of its match, or Enter to choose the nearest match.
-5. Press S again for another search.
+5. Press s again for another search.
 
 The prompt appears as `⚡ query  [3 matches / 3 labels]`, with a Frappe Blue background by default. Matches use a slightly brighter Surface1 background; labels keep their Pink background.
 
@@ -127,7 +127,7 @@ The original pane is neither swapped nor resized. A resize or changed copy-mode 
 The plugin does not bind **v**, **y** or **q**, change clipboard settings, or depend on tmux-yank. Use your own copy-mode bindings:
 
 ```text
-S -> search -> label -> v -> S -> search -> label -> y
+s -> search -> label -> v -> s -> search -> label -> y
 ```
 
 Jumping extends an existing selection. Whether y exits copy-mode is entirely determined by your own binding. With tmux-yank, configure before TPM initialization:
@@ -138,14 +138,96 @@ set -g @yank_action 'copy-pipe'
 
 Then y copies without exiting, and you can repeat search/select/y until q exits. Later bindings can override tmux-yank; check the effective binding with `tmux list-keys -T copy-mode-vi y`.
 
-During search, q and S are ordinary query characters or assigned labels, not exit/restart commands. Cancel search with Esc first if you want q to invoke your normal copy-mode exit binding. With an exiting y binding, re-enter copy-mode before using S again.
+During search, q and s are ordinary query characters or assigned labels, not exit/restart commands. Cancel search with Esc first if you want q to invoke your normal copy-mode exit binding. With an exiting y binding, re-enter copy-mode before using s again.
+
+## Syntax Selection (0.2.0)
+
+| Key | Purpose | While Active |
+| --- | --- | --- |
+| `s` | Search text and jump to its start | Type a query; select a label or Enter |
+| `S` | Select syntax around the current cursor | `;` expands, `,` shrinks; label or Enter confirms |
+| `R` | Search text and select its enclosing syntax | Type a query; select a range label or Enter |
+
+`S` and `R` are independent entrypoints. With the cursor on `42`, `S` previews
+its smallest named node, then lets you expand to a declaration, block, or
+function. With `R`, search for `42` and choose the `let_declaration` or
+`function_item` label directly. Enter chooses the nearest hit's smallest range.
+In `R`, `;` and `,` are query characters or labels, not range-cycling commands.
+You can use `R -> query -> Enter -> S` when you prefer stepwise expansion.
+
+Syntax previews do not change the real pane. Confirming replaces the old
+selection with a characterwise range; it does not copy or exit copy-mode.
+Esc/Ctrl+C cancels without changing the original cursor/selection. Copy using
+your own binding. `s` still extends an existing selection instead of replacing it.
+Overlapping node boundaries also appear in the prompt legend; labels overlay
+cells and never insert or shift source text. Label letters depend on the query.
+
+### Languages and Cat Fixtures
+
+Built-in parsers: Rust, Python, JavaScript, TypeScript, TSX, JSON, Bash, C, C++,
+Go, Lua, Ruby, Zig, PHP, Java. No Neovim, external Tree-sitter CLI, or runtime
+grammar download is needed. Embedded licenses are in THIRD_PARTY_LICENSES.md.
+
+```sh
+# From the checkout root, in the pane being tested:
+tmux set-option -p @flash-treesitter-language auto
+cat tests/snippets/rust.rs
+# Enter copy-mode, move onto value/42, and press S; or use R and search 42.
+# If detection is ambiguous, choose an explicit language:
+tmux set-option -p @flash-treesitter-language rust
+# Remove the pane override to inherit the global setting:
+tmux set-option -pu @flash-treesitter-language
+```
+
+See [all 15 fixtures and commands](tests/snippets/README.md). Canonical overrides
+are `rust`, `python`, `javascript`, `typescript`, `tsx`, `json`, `bash`, `c`, `cpp`,
+`go`, `lua`, `ruby`, `zig`, `php`, `java`; aliases include `js`, `ts`, `sh`, `rb`,
+and `c++`. Pane overrides take precedence over the global option.
+
+`auto` uses grammar-validated syntax near the cursor, not a source-file name.
+It conservatively rejects ambiguity (for example C/C++ common syntax). Recovery
+looks back at most 32 logical lines, examines up to 16 following line breaks,
+and limits each local fragment to 8 KiB. Detection/parsing shares a 250 ms budget;
+source input is capped at 256 KiB. Large/truncated declarations or mixed output
+may require an explicit language. Only visible text is available: clipped wrapped
+lines are rejected rather than selected at guessed coordinates. Language
+injections, cross-window operations, editor operator-pending mode, and Neovim's
+zero-cell inline virtual labels are not supported. This is core workflow
+compatibility, not complete flash.nvim equivalence.
+
+### Syntax Walkthrough Screenshots
+
+Captured during manual testing; copied declaration/function endpoints were
+verified by the tester. The first image is a cropped prompt legend.
+
+![R search for 42 with labels for enclosing syntax ranges](assets/screenshots/4-treesitter-search-labels.png)
+
+![Confirmed function selection excluding the shell command](assets/screenshots/5-treesitter-function-selection.png)
+
+![S node-range preview with boundary labels](assets/screenshots/6-treesitter-range-preview.png)
+
+### Upgrading From 0.1.0
+
+The default search key changes from `S` to `s`; `S` and `R` now select syntax.
+A running server may retain `@flash-key S` even after removing it from the config.
+Set `@flash-key s` explicitly or unset it before reloading. Conflicting trigger
+keys are rejected; explicitly configured keys are never silently rewritten.
+Only plugin-owned old bindings are removed; user replacements are preserved on
+reload. These defaults replace native copy-mode actions at `s`, `S`, and `R`.
+
+The checkout is prepared for 0.2.0; a public v0.2.0 Release is not implied.
+Keep `@flash-bin` set for local tests. Use the pinned-release installation
+instructions only with a tag whose matching public Release already exists.
 
 ## Configuration
 
 Configure options **before TPM initialization or manual plugin loading**. Unset options receive defaults; user values are not overwritten.
 
 ```tmux
-set -g @flash-key 'S'
+set -g @flash-key 's'
+set -g @flash-treesitter-key 'S'
+set -g @flash-treesitter-search-key 'R'
+set -g @flash-treesitter-language 'auto'
 set -g @flash-labels 'asdfghjklASDFHJKLqwertyuiopzxcvbnmQWERTYUIOPZXCVBNM'
 set -g @flash-label-bg '#f4b8e4'   # Frappe Pink
 set -g @flash-label-fg '#303446'   # Base
@@ -168,6 +250,7 @@ cargo test
 cargo build
 python3 tests/tmux_probe.py
 python3 tests/e2e.py
+python3 tests/treesitter_e2e.py
 sh tests/plugin.sh
 sh tests/install.sh
 python3 tests/bootstrap_test.py
