@@ -30,8 +30,57 @@ pub fn render_syntax(view: &Viewport, state: &SyntaxState, config: &Config) -> R
             });
         }
     }
-    // Coincident nested boundaries remain unambiguous in the prompt legend;
-    // no virtual cells are inserted into the captured source.
+    let mut occupied = std::collections::HashSet::new();
+    for target in &state.targets {
+        let Some(label) = target.label else {
+            continue;
+        };
+        let candidates = [
+            crate::model::ScreenPoint {
+                row: target.range.start.row,
+                cell: target.range.start.cell.saturating_sub(1),
+            },
+            crate::model::ScreenPoint {
+                row: target.range.end.row,
+                cell: target.range.end.cell + 1,
+            },
+        ];
+        for point in candidates {
+            if point.cell >= view.width || occupied.contains(&(point.row, point.cell)) {
+                continue;
+            }
+            let mut cell = 0;
+            let mut safe = false;
+            for grapheme in unicode_segmentation::UnicodeSegmentation::graphemes(
+                view.rows[point.row].as_str(),
+                true,
+            ) {
+                let width = crate::model::grapheme_width(grapheme, cell);
+                if cell == point.cell && width == 1 {
+                    safe = true;
+                    break;
+                }
+                cell += width;
+            }
+            safe |= point.cell >= cell;
+            if !safe {
+                continue;
+            }
+            occupied.insert((point.row, point.cell));
+            search.labels.push(crate::model::LabeledMatch {
+                label,
+                position: point,
+                target: Match {
+                    point: target.range.start,
+                    start: 0,
+                    end: 0,
+                    end_cell: target.range.end.cell + 1,
+                },
+            });
+            break;
+        }
+    }
+    // Coincident boundaries also have prompt legend entries; source cells never shift.
     render(view, &search, config)
 }
 

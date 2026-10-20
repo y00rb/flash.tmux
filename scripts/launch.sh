@@ -13,7 +13,7 @@ if [ ! -x "$binary" ]; then
     tmux display-message -l -c "$2" 'flash-tmux: binary missing; build @flash-bin or reload the plugin to install the release binary'
     exit 1
 fi
-if ! error=$("$binary" start --pane "$1" --client "$2" 2>&1); then
+if ! error=$("$binary" start --pane "$1" --client "$2" --mode "${3:-search}" 2>&1); then
     tmux display-message -l -c "$2" "flash-tmux: $error"
     exit 1
 fi

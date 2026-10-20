@@ -137,7 +137,7 @@ class EndToEnd(unittest.TestCase):
             t.command('copy-mode', '-t', t.pane)
             for query, expected in [(b'first', (0, 0)), (b'second', (0, 1))]:
                 t.output = b''
-                os.write(t.master, b'S')
+                os.write(t.master, b's')
                 t.wait(lambda: '\u26a1'.encode() in t.output)
                 os.write(t.master, query + b'\r')
                 t.wait(lambda: t.cursor() == expected)
@@ -249,7 +249,7 @@ class EndToEnd(unittest.TestCase):
             subprocess.run(['sh', str(root / 'flash.tmux')], env=env, check=True)
             t.command('copy-mode', '-t', t.pane)
             t.output = b''
-            os.write(t.master, b'S')
+            os.write(t.master, b's')
             t.wait(lambda: '\u26a1'.encode() in t.output)
             os.write(t.master, b'\x1b')
 
@@ -273,7 +273,7 @@ class EndToEnd(unittest.TestCase):
             before = t.command('list-keys', '-T', 'copy-mode-vi', 'y')
             env = dict(os.environ, TMUX=t.command('display', '-p', '#{socket_path},#{pid},0').strip())
             subprocess.run(['sh', str(ROOT / 'flash.tmux')], env=env, check=True)
-            self.assertEqual(t.command('show', '-gqv', '@flash-key').strip(), 'S')
+            self.assertEqual(t.command('show', '-gqv', '@flash-key').strip(), 's')
             self.assertEqual(t.command('show', '-gqv', '@flash-match-bg').strip(), '#51576d')
             self.assertEqual(t.command('show', '-gqv', '@flash-prompt-bg').strip(), '#8caaee')
             self.assertIn('launch.sh', t.command('list-keys', '-T', 'copy-mode-vi', 'S'))

@@ -6,7 +6,10 @@ set_default() {
         tmux set-option -g "@$1" "$2"
     fi
 }
-set_default flash-key S
+set_default flash-key s
+set_default flash-treesitter-key S
+set_default flash-treesitter-search-key R
+set_default flash-treesitter-language auto
 set_default flash-labels asdfghjklASDFHJKLqwertyuiopzxcvbnmQWERTYUIOPZXCVBNM
 set_default flash-label-bg '#f4b8e4'
 set_default flash-label-fg '#303446'
@@ -36,15 +39,36 @@ fi
 # Quote the install directory once; tmux quotes pane/client values on expansion.
 escaped_dir=$(printf '%s' "$DIR" | sed "s/'/'\\\\''/g")
 command="sh '$escaped_dir/scripts/launch.sh' #{q:pane_id} #{q:client_name}"
-key=$(tmux show-option -gqv @flash-key)
-old=$(tmux show-option -gqv @flash-bound-key)
-for table in copy-mode copy-mode-vi; do
-    if [ -n "$old" ] && [ "$old" != "$key" ]; then
+cleanup() {
+    key=$(tmux show-option -gqv "@$1")
+    old=$(tmux show-option -gqv "@$2")
+    if [ -z "$old" ] || [ "$old" = "$key" ]; then return; fi
+    for table in copy-mode copy-mode-vi; do
         binding=$(tmux list-keys -T "$table" "$old" 2>/dev/null || :)
         case "$binding" in
             *"$DIR/scripts/launch.sh"*) tmux unbind-key -T "$table" "$old" ;;
         esac
-    fi
-    tmux bind-key -T "$table" "$key" run-shell -b "$command"
-done
-tmux set-option -g @flash-bound-key "$key"
+    done
+}
+# Clean every old key before installing any new key, including key swaps.
+cleanup flash-key flash-bound-key
+cleanup flash-treesitter-key flash-bound-treesitter-key
+cleanup flash-treesitter-search-key flash-bound-treesitter-search-key
+register() {
+    key=$(tmux show-option -gqv "@$1")
+    old=$(tmux show-option -gqv "@$3")
+    for table in copy-mode copy-mode-vi; do
+        if [ -n "$old" ]; then
+            binding=$(tmux list-keys -T "$table" "$old" 2>/dev/null || :)
+            case "$binding" in
+                *"$DIR/scripts/launch.sh"*) : ;;
+                *) if [ "$old" = "$key" ]; then continue; fi ;;
+            esac
+        fi
+        tmux bind-key -T "$table" "$key" run-shell -b "$command $2"
+    done
+    tmux set-option -g "@$3" "$key"
+}
+register flash-key search flash-bound-key
+register flash-treesitter-key treesitter flash-bound-treesitter-key
+register flash-treesitter-search-key treesitter-search flash-bound-treesitter-search-key

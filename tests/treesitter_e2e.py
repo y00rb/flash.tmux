@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Syntax workflows on disposable servers only; never the user's session."""
 import os
+import subprocess
 import unittest
-from e2e import invoke
+from e2e import invoke, ROOT, BINARY
 from tmux_harness import Tmux
 
 
@@ -42,6 +43,30 @@ class SyntaxWorkflows(unittest.TestCase):
             self.finish(process)
             t.move('copy-selection')
             self.assertEqual(t.command('show-buffer'), 'value')
+
+    def test_actual_s_and_r_bindings(self):
+        for key, query, expected in [(b'S', b'\r', '1'), (b'R', b'value\r', 'value')]:
+            with self.subTest(key=key), Tmux() as t:
+                text = 'fn main() { let value = inner(1); }'
+                t.fixture([text, 'END'])
+                t.command('set', '-g', '@flash-bin', str(BINARY))
+                t.command('set', '-p', '-t', t.pane, '@flash-treesitter-language', 'rust')
+                env = dict(os.environ, TMUX=t.command('display', '-p', '#{socket_path},#{pid},0').strip())
+                subprocess.run(['sh', str(ROOT / 'flash.tmux')], env=env, check=True)
+                for table in ['copy-mode', 'copy-mode-vi']:
+                    self.assertIn('treesitter', t.command('list-keys', '-T', table, key.decode()))
+                t.command('copy-mode', '-t', t.pane)
+                t.move('top-line')
+                t.move('start-of-line')
+                t.move('cursor-right', text.index('1'))
+                t.output = b''
+                os.write(t.master, key)
+                t.wait(lambda: b'TS rust' in t.output)
+                os.write(t.master, query)
+                start = text.index('1') if key == b'S' else text.index('value')
+                t.wait(lambda: t.command('display', '-p', '#{selection_start_x}').strip() == str(start))
+                t.move('copy-selection')
+                self.assertEqual(t.command('show-buffer'), expected)
 
     def test_multiline_range_and_emacs_selection(self):
         for keys in ['vi', 'emacs']:

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
 pub const DEFAULT_LABELS: &str = "asdfghjklASDFHJKLqwertyuiopzxcvbnmQWERTYUIOPZXCVBNM";
-pub const DEFAULTS: [(&str, &str); 8] = [
-    ("flash-key", "S"),
+pub const DEFAULTS: [(&str, &str); 10] = [
+    ("flash-key", "s"),
     ("flash-labels", DEFAULT_LABELS),
     ("flash-label-bg", "#f4b8e4"),
     ("flash-label-fg", "#303446"),
@@ -12,11 +12,15 @@ pub const DEFAULTS: [(&str, &str); 8] = [
     ("flash-match-bg", "#51576d"),
     ("flash-prompt-bg", "#8caaee"),
     ("flash-prompt-fg", "#303446"),
+    ("flash-treesitter-key", "S"),
+    ("flash-treesitter-search-key", "R"),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub key: String,
+    pub treesitter_key: String,
+    pub treesitter_search_key: String,
     pub language: crate::syntax::LanguageChoice,
     pub labels: String,
     pub label_bg: String,
@@ -38,8 +42,22 @@ impl Config {
                     .unwrap_or_else(|| default.to_string())
             })
             .collect();
-        if values[0].is_empty() || values[0].chars().any(char::is_control) {
+        if [0, 8, 9]
+            .iter()
+            .any(|i| values[*i].is_empty() || values[*i].chars().any(char::is_control))
+        {
             return Err("@flash-key must be a nonempty tmux key name".into());
+        }
+        let canonical = |key: &str| match key {
+            "C-i" | "C-I" | "Tab" => "Tab".to_string(),
+            "C-m" | "C-M" | "Enter" => "Enter".to_string(),
+            "C-[" | "Escape" => "Escape".to_string(),
+            "Space" => " ".to_string(),
+            other => other.to_string(),
+        };
+        let keys: HashSet<_> = [0, 8, 9].iter().map(|i| canonical(&values[*i])).collect();
+        if keys.len() != 3 {
+            return Err("flash trigger keys collide; change/unset @flash-key (old default S) or remap @flash-treesitter-key / @flash-treesitter-search-key".into());
         }
         let mut unique = HashSet::new();
         if values[1].is_empty()
@@ -51,7 +69,7 @@ impl Config {
                 "@flash-labels must contain unique printable non-space ASCII characters".into(),
             );
         }
-        for (i, color) in values.iter().enumerate().skip(2) {
+        for (i, color) in values.iter().enumerate().take(8).skip(2) {
             if color.is_empty() && (i == 5 || i == 6) {
                 continue;
             }
@@ -69,6 +87,8 @@ impl Config {
         }
         Ok(Self {
             key: values[0].clone(),
+            treesitter_key: values[8].clone(),
+            treesitter_search_key: values[9].clone(),
             language: options
                 .get("flash-treesitter-language")
                 .map(String::as_str)
