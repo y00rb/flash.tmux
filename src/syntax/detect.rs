@@ -109,6 +109,46 @@ fn resolve_inner(
         );
     }
     let mut candidates = Vec::new();
+    if let Some(byte) = focus {
+        // `fn` is shared by Rust and Zig. Validate both grammars against the
+        // enclosing declaration before spending time on unrelated parsers.
+        let starts = std::iter::once(0)
+            .chain(
+                document.text()[..byte]
+                    .match_indices('\n')
+                    .map(|(index, _)| index + 1),
+            )
+            .collect::<Vec<_>>();
+        for start in starts.into_iter().rev().take(32) {
+            let line = document.text()[start..].lines().next().unwrap_or("").trim();
+            let words = line.split_whitespace().take(5).collect::<Vec<_>>();
+            if !words.contains(&"fn") {
+                continue;
+            }
+            let mut text = String::with_capacity(document.text().len());
+            for ch in document.text()[..start].bytes() {
+                text.push(if ch == b'\n' { '\n' } else { ' ' });
+            }
+            text.push_str(&document.text()[start..]);
+            let mut local = Vec::new();
+            for language in [LanguageId::Rust, LanguageId::Zig] {
+                let parsed = ParsedSyntax::parse_text(
+                    language,
+                    &text,
+                    deadline.saturating_duration_since(Instant::now()),
+                )?;
+                if local_score(&parsed, byte).is_some() {
+                    local.push(parsed);
+                }
+            }
+            if local.len() == 1 {
+                return Ok(local.remove(0));
+            }
+            if local.len() > 1 {
+                return Err("ambiguous syntax language (rust or zig); set @flash-treesitter-language explicitly".into());
+            }
+        }
+    }
     for language in LanguageId::ALL {
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {

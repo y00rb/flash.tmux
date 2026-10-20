@@ -120,6 +120,22 @@ fn cursor_local_detection_handles_cat_output_among_shell_text() {
 }
 
 #[test]
+fn cursor_local_detection_handles_dense_terminal_history_within_budget() {
+    use flash_tmux::{model::ScreenPoint, syntax::detect::resolve_at};
+    let history = "user@host ~/checkout $ tmux set-option -p @flash-treesitter-language auto && cat tests/snippets/rust.rs\n".repeat(48);
+    let text = format!("{history}fn main() {{\n    let value = 42;\n}}\nuser@host ~/checkout $\n");
+    let doc = source(&text);
+    let parsed = resolve_at(
+        &doc,
+        LanguageChoice::Auto,
+        ScreenPoint { row: 49, cell: 8 },
+        Duration::from_millis(250),
+    )
+    .unwrap();
+    assert_eq!(parsed.language, LanguageId::Rust);
+}
+
+#[test]
 fn no_detection_with_expired_budget() {
     assert!(detect(&source("fn main() {}"), Duration::ZERO).is_err());
 }
