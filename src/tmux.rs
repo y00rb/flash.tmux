@@ -131,7 +131,7 @@ pub fn snapshot(pane: &str, client: &str) -> Result<Snapshot> {
         0
     };
     let snapshot = Snapshot {
-        version: 1,
+        version: 2,
         pane: pane.into(),
         client: client.into(),
         viewport: Viewport::new(rows, width),
@@ -233,6 +233,12 @@ pub fn apply_jump(original: &Snapshot, point: ScreenPoint) -> Result<()> {
     if !validate_snapshot(original)? {
         return Err("copy-mode viewport changed; jump cancelled".into());
     }
+    let args = movement(original, point);
+    command(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+    Ok(())
+}
+
+fn movement(original: &Snapshot, point: ScreenPoint) -> Vec<String> {
     let mut args = vec![
         "send-keys".to_string(),
         "-t".into(),
@@ -274,6 +280,58 @@ pub fn apply_jump(original: &Snapshot, point: ScreenPoint) -> Result<()> {
             "-X".into(),
             "-N".into(),
             motions.to_string(),
+            "cursor-right".into(),
+        ]);
+    }
+    args
+}
+
+pub fn apply_range(original: &Snapshot, range: crate::model::ScreenRange) -> Result<()> {
+    let source = crate::syntax::document::SourceDocument::from_capture(&syntax_capture(original)?)?;
+    if (range.start.row, range.start.cell) > (range.end.row, range.end.cell)
+        || source.byte_at(range.start).is_none()
+        || source.byte_at(range.end).is_none()
+    {
+        return Err("invalid syntax selection range".into());
+    }
+    if !validate_snapshot(original)? {
+        return Err("copy-mode changed; selection cancelled".into());
+    }
+    let mut args: Vec<String> = vec![
+        "send-keys".into(),
+        "-t".into(),
+        original.pane.clone(),
+        "-X".into(),
+        "clear-selection".into(),
+    ];
+    args.extend([
+        ";".into(),
+        "send-keys".into(),
+        "-t".into(),
+        original.pane.clone(),
+        "-X".into(),
+        "rectangle-off".into(),
+    ]);
+    args.push(";".into());
+    args.extend(movement(original, range.start));
+    args.extend([
+        ";".into(),
+        "send-keys".into(),
+        "-t".into(),
+        original.pane.clone(),
+        "-X".into(),
+        "begin-selection".into(),
+        ";".into(),
+    ]);
+    args.extend(movement(original, range.end));
+    let keys = command(&["show-options", "-wqv", "-t", &original.pane, "mode-keys"])?;
+    if keys.trim() == "emacs" {
+        args.extend([
+            ";".into(),
+            "send-keys".into(),
+            "-t".into(),
+            original.pane.clone(),
+            "-X".into(),
             "cursor-right".into(),
         ]);
     }

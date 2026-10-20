@@ -12,3 +12,4 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub mod syntax;
 pub mod syntax_input;
+pub mod syntax_render;

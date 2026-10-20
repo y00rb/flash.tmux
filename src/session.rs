@@ -18,6 +18,8 @@ use std::{
 struct Request {
     snapshot: Snapshot,
     config: Config,
+    mode: crate::model::InteractionMode,
+    capture: Option<crate::syntax::document::CapturedDocument>,
 }
 
 pub fn quote(text: &str) -> String {
@@ -47,7 +49,11 @@ fn lock_dir() -> Result<PathBuf> {
 }
 
 pub fn start(pane: &str, client: &str) -> Result<()> {
-    let config = tmux::config()?;
+    start_mode(pane, client, crate::model::InteractionMode::Search)
+}
+
+pub fn start_mode(pane: &str, client: &str, mode: crate::model::InteractionMode) -> Result<()> {
+    let config = tmux::config_for_pane(pane)?;
     let original = tmux::snapshot(pane, client)?;
     let dir = lock_dir()?;
     let socket = tmux::command(&["display-message", "-p", "-t", pane, "#{socket_path}"])?;
@@ -95,6 +101,12 @@ pub fn start(pane: &str, client: &str) -> Result<()> {
         serde_json::to_vec(&Request {
             snapshot: original.clone(),
             config,
+            mode,
+            capture: if mode == crate::model::InteractionMode::Search {
+                None
+            } else {
+                Some(tmux::syntax_capture(&original)?)
+            },
         })?,
     )?;
     let executable = std::env::current_exe()?;
@@ -126,8 +138,10 @@ pub fn start(pane: &str, client: &str) -> Result<()> {
     result?;
     if result_path.exists() {
         let outcome: Outcome = serde_json::from_slice(&fs::read(&result_path)?)?;
-        if let Outcome::Selected { point } = outcome {
-            tmux::apply_jump(&original, point)?;
+        match outcome {
+            Outcome::Selected { point } => tmux::apply_jump(&original, point)?,
+            Outcome::RangeSelected { range } => tmux::apply_range(&original, range)?,
+            Outcome::Cancelled => {}
         }
     }
     Ok(())
@@ -135,15 +149,26 @@ pub fn start(pane: &str, client: &str) -> Result<()> {
 
 pub fn overlay(request_path: &Path, result_path: &Path) -> Result<()> {
     let request: Request = serde_json::from_slice(&fs::read(request_path)?)?;
-    if request.snapshot.version != 1 {
+    if request.snapshot.version != 2 {
         return Err("unsupported snapshot format".into());
     }
-    let outcome = terminal::run(
-        &request.snapshot.viewport,
-        request.snapshot.cursor,
-        &request.snapshot.client,
-        &request.config,
-    )?;
+    let outcome = if request.mode == crate::model::InteractionMode::Search {
+        terminal::run(
+            &request.snapshot.viewport,
+            request.snapshot.cursor,
+            &request.snapshot.client,
+            &request.config,
+        )?
+    } else {
+        terminal::run_syntax(
+            request.capture.as_ref().ok_or("missing syntax capture")?,
+            request.snapshot.cursor,
+            &request.snapshot.client,
+            &request.config,
+            request.mode,
+            request.snapshot.client_width,
+        )?
+    };
     let mut result =
         tempfile::NamedTempFile::new_in(result_path.parent().ok_or("result path needs a parent")?)?;
     serde_json::to_writer(&mut result, &outcome)?;

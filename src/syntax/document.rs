@@ -22,6 +22,7 @@ pub fn decode_capture_pair(single: &str, pair: &str) -> Result<(String, bool)> {
     }
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CapturedDocument {
     pub view: Viewport,
     pub wraps: Vec<bool>,

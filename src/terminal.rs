@@ -15,6 +15,63 @@ use std::{
     time::Duration,
 };
 
+pub fn run_syntax(
+    capture: &crate::syntax::document::CapturedDocument,
+    origin: ScreenPoint,
+    client: &str,
+    config: &Config,
+    mode: crate::model::InteractionMode,
+    prompt_width: usize,
+) -> Result<Outcome> {
+    use crate::{
+        syntax::{PARSE_BUDGET, detect::resolve, document::SourceDocument},
+        syntax_input::{SyntaxAction, SyntaxState},
+        syntax_render::{render_syntax, syntax_prompt},
+    };
+    let source = SourceDocument::from_capture(capture)?;
+    let parsed = resolve(&source, config.language, PARSE_BUDGET)?;
+    let mut state = SyntaxState::new(mode, source, parsed, origin, config)?;
+    terminal::enable_raw_mode()?;
+    let _guard = TerminalGuard;
+    loop {
+        write!(
+            stdout(),
+            "{}",
+            render_syntax(&capture.view, &state, config)?
+        )?;
+        stdout().flush()?;
+        tmux::message(client, &syntax_prompt(&state, prompt_width), config)?;
+        let input = loop {
+            match event::read()? {
+                Event::Resize(_, _) => return Ok(Outcome::Cancelled),
+                Event::Paste(text) => break Input::Text(text),
+                Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
+                    KeyCode::Esc => break Input::Escape,
+                    KeyCode::Char('c' | 'd') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        break Input::Interrupt;
+                    }
+                    KeyCode::Char(ch)
+                        if !key
+                            .modifiers
+                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                    {
+                        break Input::Text(ch.into());
+                    }
+                    KeyCode::Backspace => break Input::Backspace,
+                    KeyCode::Enter => break Input::Enter,
+                    _ => {}
+                },
+                _ => {}
+            }
+        };
+        match state.reduce(input, config) {
+            SyntaxAction::Cancel => return Ok(Outcome::Cancelled),
+            SyntaxAction::Select(range) => return Ok(Outcome::RangeSelected { range }),
+            SyntaxAction::Continue => {}
+        }
+    }
+}
+
 struct TerminalGuard;
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
