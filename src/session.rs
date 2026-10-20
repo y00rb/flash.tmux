@@ -181,11 +181,9 @@ fn overlay_inner(request_path: &Path, result_path: &Path) -> Result<()> {
     } else {
         terminal::run_syntax(
             request.capture.as_ref().ok_or("missing syntax capture")?,
-            request.snapshot.cursor,
-            &request.snapshot.client,
             &request.config,
             request.mode,
-            request.snapshot.client_width,
+            &request.snapshot,
         )?
     };
     let mut result =

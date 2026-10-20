@@ -148,6 +148,46 @@ class SyntaxWorkflows(unittest.TestCase):
             self.assertIn('ambiguous syntax language', t.command('show-messages'))
             self.assertEqual(t.cursor(), before)
 
+    def test_rectangle_is_cleared_for_confirmed_syntax_range(self):
+        with Tmux() as t:
+            text = 'fn main() { let value = 42; }'
+            t.fixture([text, 'END'])
+            t.command('copy-mode', '-t', t.pane)
+            t.move('top-line')
+            t.move('start-of-line')
+            t.move('rectangle-on')
+            t.move('begin-selection')
+            process = self.open(t, 'treesitter-search')
+            os.write(t.master, b'42\r')
+            self.finish(process)
+            self.assertEqual(t.command('display', '-p', '#{rectangle_toggle}').strip(), '0')
+            t.move('copy-selection')
+            self.assertEqual(t.command('show-buffer'), '42')
+
+    def test_stale_state_is_rejected_without_overwriting_new_cursor(self):
+        with Tmux() as t:
+            t.fixture(['fn main() { let value = 42; }', 'END'])
+            t.command('copy-mode', '-t', t.pane)
+            t.move('top-line')
+            t.move('start-of-line')
+            process = self.open(t, 'treesitter-search')
+            t.move('cursor-right', 3)
+            changed = t.cursor()
+            os.write(t.master, b'42\r')
+            _, stderr = process.communicate(timeout=5)
+            self.assertNotEqual(process.returncode, 0)
+            self.assertIn('changed', stderr.decode())
+            self.assertEqual(t.cursor(), changed)
+
+    def test_resize_cancels_syntax_preview(self):
+        with Tmux() as t:
+            t.fixture(['fn main() { let value = 42; }', 'END'])
+            t.command('copy-mode', '-t', t.pane)
+            process = self.open(t, 'treesitter-search')
+            t.resize(90, 26)
+            self.finish(process)
+            self.assertEqual(t.command('display', '-p', '#{pane_in_mode}').strip(), '1')
+
     def test_cancel_preserves_existing_selection(self):
         with Tmux() as t:
             t.fixture(['fn main() { let value = 42; }', 'END'])
