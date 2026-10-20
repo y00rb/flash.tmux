@@ -48,12 +48,50 @@ impl Config {
         {
             return Err("@flash-key must be a nonempty tmux key name".into());
         }
-        let canonical = |key: &str| match key {
-            "C-i" | "C-I" | "Tab" => "Tab".to_string(),
-            "C-m" | "C-M" | "Enter" => "Enter".to_string(),
-            "C-[" | "Escape" => "Escape".to_string(),
-            "Space" => " ".to_string(),
-            other => other.to_string(),
+        let canonical = |mut key: &str| {
+            let (mut control, mut meta, mut shift) = (false, false, false);
+            loop {
+                if let Some(rest) = key.strip_prefix("C-") {
+                    control = true;
+                    key = rest;
+                } else if let Some(rest) = key.strip_prefix("M-") {
+                    meta = true;
+                    key = rest;
+                } else if let Some(rest) = key.strip_prefix("S-") {
+                    shift = true;
+                    key = rest;
+                } else {
+                    break;
+                }
+            }
+            // tmux accepts modifiers in any order, but the base key's case is
+            // significant (C-a and C-A are distinct on extended-key clients).
+            if control {
+                match key {
+                    "i" => {
+                        control = false;
+                        key = "Tab";
+                    }
+                    "m" => {
+                        control = false;
+                        key = "Enter";
+                    }
+                    "[" => {
+                        control = false;
+                        key = "Escape";
+                    }
+                    _ => {}
+                }
+            }
+            if key == "Space" {
+                key = " ";
+            }
+            format!(
+                "{}{}{}{key}",
+                if control { "C-" } else { "" },
+                if meta { "M-" } else { "" },
+                if shift { "S-" } else { "" }
+            )
         };
         let keys: HashSet<_> = [0, 8, 9].iter().map(|i| canonical(&values[*i])).collect();
         if keys.len() != 3 {

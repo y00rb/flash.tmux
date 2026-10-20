@@ -111,7 +111,7 @@ pub fn resolve_at(
     origin: crate::model::ScreenPoint,
     budget: Duration,
 ) -> Result<ParsedSyntax> {
-    resolve_inner(document, choice, document.byte_at(origin), budget)
+    resolve_inner(document, choice, document.cursor_byte_at(origin), budget)
 }
 
 fn resolve_inner(

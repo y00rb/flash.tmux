@@ -188,6 +188,20 @@ class SyntaxWorkflows(unittest.TestCase):
             self.finish(process)
             self.assertEqual(t.command('display', '-p', '#{pane_in_mode}').strip(), '1')
 
+    def test_s_on_blank_line_selects_enclosing_block(self):
+        with Tmux() as t:
+            rows = ['fn main() {', '', '    let value = 42;', '}']
+            t.fixture(rows)
+            t.command('copy-mode', '-t', t.pane)
+            t.move('top-line')
+            t.move('cursor-down')
+            t.move('start-of-line')
+            process = self.open(t, 'treesitter')
+            os.write(t.master, b'\r')
+            self.finish(process)
+            t.move('copy-selection')
+            self.assertEqual(t.command('show-buffer'), '{\n\n    let value = 42;\n}')
+
     def test_cancel_preserves_existing_selection(self):
         with Tmux() as t:
             t.fixture(['fn main() { let value = 42; }', 'END'])

@@ -26,6 +26,20 @@ fn joined_capture_distinguishes_wraps_from_full_width_hard_lines() {
 }
 
 #[test]
+fn cursor_on_blank_line_maps_to_newline_but_not_a_confirmed_endpoint() {
+    let doc = document(&["fn main() {", "", "}"], vec![false; 3]);
+    let point = ScreenPoint { row: 1, cell: 0 };
+    assert_eq!(doc.byte_at(point), None);
+    assert_eq!(doc.cursor_byte_at(point), Some(12));
+    assert_eq!(
+        doc.cursor_byte_at(ScreenPoint { row: 1, cell: 79 }),
+        Some(12)
+    );
+    assert_eq!(doc.cursor_byte_at(ScreenPoint { row: 1, cell: 80 }), None);
+    assert_eq!(doc.cursor_byte_at(ScreenPoint { row: 99, cell: 0 }), None);
+}
+
+#[test]
 fn newline_end_does_not_include_next_line() {
     let doc = document(&["abc", "def"], vec![false, false]);
     assert_eq!(doc.text(), "abc\ndef");

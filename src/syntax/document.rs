@@ -38,6 +38,7 @@ pub struct SourceDocument {
     view: Viewport,
     text: String,
     cells: Vec<SourceCell>,
+    row_starts: Vec<usize>,
 }
 
 impl SourceDocument {
@@ -48,7 +49,9 @@ impl SourceDocument {
         }
         let mut text = String::new();
         let mut cells = Vec::new();
+        let mut row_starts = Vec::with_capacity(rows.len());
         for (row, line) in rows.iter().enumerate() {
+            row_starts.push(text.len());
             let mut cell = 0;
             for grapheme in line.graphemes(true) {
                 if grapheme.chars().any(|ch| ch.is_control() && ch != '\t') {
@@ -78,6 +81,7 @@ impl SourceDocument {
             view: capture.view.clone(),
             text,
             cells,
+            row_starts,
         })
     }
 
@@ -98,6 +102,19 @@ impl SourceDocument {
                     && point.cell < cell.point.cell + cell.width
             })
             .map(|cell| cell.bytes.start)
+    }
+
+    pub fn cursor_byte_at(&self, point: ScreenPoint) -> Option<usize> {
+        if point.cell >= self.view.width {
+            return None;
+        }
+        self.byte_at(point).or_else(|| {
+            let start = *self.row_starts.get(point.row)?;
+            let end = start + self.view.rows[point.row].len();
+            // Empty lines and screen padding have no grapheme cell. Their
+            // hard newline still has a byte position inside enclosing nodes.
+            (self.text.as_bytes().get(end) == Some(&b'\n')).then_some(end)
+        })
     }
 
     pub fn screen_range(&self, bytes: Range<usize>) -> Option<ScreenRange> {

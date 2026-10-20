@@ -119,7 +119,7 @@ impl SyntaxState {
             .collect();
         let mut nodes = vec![];
         if self.mode == InteractionMode::Treesitter {
-            if let Some(byte) = self.source.byte_at(self.origin) {
+            if let Some(byte) = self.source.cursor_byte_at(self.origin) {
                 nodes = self.parsed.ancestors_at(byte);
             }
         } else {

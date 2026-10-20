@@ -45,6 +45,10 @@ cleanup() {
     if [ -z "$old" ] || [ "$old" = "$key" ]; then return; fi
     for table in copy-mode copy-mode-vi; do
         binding=$(tmux list-keys -T "$table" "$old" 2>/dev/null || :)
+        current=$(tmux list-keys -T "$table" "$key" 2>/dev/null || :)
+        # Compare tmux's parsed identities too: M-C-a and C-M-a may name
+        # the same key even though their option strings differ.
+        if [ -n "$binding" ] && [ "$binding" = "$current" ]; then continue; fi
         case "$binding" in
             *"$DIR/scripts/launch.sh"*) tmux unbind-key -T "$table" "$old" ;;
         esac
@@ -62,7 +66,9 @@ register() {
             binding=$(tmux list-keys -T "$table" "$old" 2>/dev/null || :)
             case "$binding" in
                 *"$DIR/scripts/launch.sh"*) : ;;
-                *) if [ "$old" = "$key" ]; then continue; fi ;;
+                *)
+                    current=$(tmux list-keys -T "$table" "$key" 2>/dev/null || :)
+                    if [ "$old" = "$key" ] || { [ -n "$binding" ] && [ "$binding" = "$current" ]; }; then continue; fi ;;
             esac
         fi
         tmux bind-key -T "$table" "$key" run-shell -b "$command $2"

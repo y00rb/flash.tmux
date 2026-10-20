@@ -17,7 +17,12 @@ fn trigger_collisions_are_rejected_with_migration_guidance() {
                 .contains("trigger")
         );
     }
-    for (first, second) in [("C-i", "Tab"), ("C-m", "Enter")] {
+    for (first, second) in [
+        ("C-i", "Tab"),
+        ("C-m", "Enter"),
+        ("M-C-a", "C-M-a"),
+        ("S-M-C-x", "C-S-M-x"),
+    ] {
         let options = BTreeMap::from([
             ("flash-key".into(), first.into()),
             ("flash-treesitter-key".into(), second.into()),

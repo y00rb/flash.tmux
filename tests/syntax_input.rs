@@ -31,6 +31,40 @@ fn state(mode: InteractionMode) -> (SyntaxState, Config) {
     )
 }
 #[test]
+fn s_on_blank_line_previews_enclosing_block() {
+    let view = Viewport::new(
+        vec![
+            "fn main() {".into(),
+            "".into(),
+            "    let value = 42;".into(),
+            "}".into(),
+        ],
+        80,
+    );
+    let source = SourceDocument::from_capture(&CapturedDocument {
+        view,
+        wraps: vec![false; 4],
+    })
+    .unwrap();
+    let parsed =
+        ParsedSyntax::parse(LanguageId::Rust, &source, Duration::from_millis(250)).unwrap();
+    let config = Config::from_options(&BTreeMap::new()).unwrap();
+    let mut state = SyntaxState::new(
+        InteractionMode::Treesitter,
+        source,
+        parsed,
+        ScreenPoint { row: 1, cell: 0 },
+        &config,
+    )
+    .unwrap();
+    assert_eq!(state.targets[0].node.kind, "block");
+    assert_eq!(
+        state.reduce(Input::Enter, &config),
+        SyntaxAction::Select(state.targets[0].range)
+    );
+}
+
+#[test]
 fn s_previews_smallest_cycles_and_confirms() {
     let (mut state, config) = state(InteractionMode::Treesitter);
     let first = state.targets[0].range;

@@ -266,6 +266,32 @@ class EndToEnd(unittest.TestCase):
             self.finish(p)
             self.assertEqual(list(Path(t.cache.name).glob('flash-tmux/search-*')), [])
 
+    def test_equivalent_trigger_keys_are_rejected_before_binding_changes(self):
+        with Tmux() as t:
+            t.command('set', '-g', '@flash-bin', str(BINARY))
+            env = dict(os.environ, TMUX=t.command('display', '-p', '#{socket_path},#{pid},0').strip())
+            subprocess.run(['sh', str(ROOT / 'flash.tmux')], env=env, check=True)
+            before = {table: t.command('list-keys', '-T', table) for table in ['copy-mode', 'copy-mode-vi']}
+            t.command('set', '-g', '@flash-key', 'M-C-a')
+            t.command('set', '-g', '@flash-treesitter-key', 'C-M-a')
+            result = subprocess.run(['sh', str(ROOT / 'flash.tmux')], env=env, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            for table, bindings in before.items():
+                self.assertEqual(t.command('list-keys', '-T', table), bindings)
+
+    def test_modifier_alias_reload_preserves_user_replacement(self):
+        with Tmux() as t:
+            t.command('set', '-g', '@flash-bin', str(BINARY))
+            t.command('set', '-g', '@flash-key', 'C-M-a')
+            env = dict(os.environ, TMUX=t.command('display', '-p', '#{socket_path},#{pid},0').strip())
+            subprocess.run(['sh', str(ROOT / 'flash.tmux')], env=env, check=True)
+            for table in ['copy-mode', 'copy-mode-vi']:
+                t.command('bind', '-T', table, 'C-M-a', 'send-keys', '-X', 'cancel')
+            t.command('set', '-g', '@flash-key', 'M-C-a')
+            subprocess.run(['sh', str(ROOT / 'flash.tmux')], env=env, check=True)
+            for table in ['copy-mode', 'copy-mode-vi']:
+                self.assertIn('cancel', t.command('list-keys', '-T', table, 'C-M-a'))
+
     def test_plugin_defaults_and_reload_preserve_user_bindings(self):
         with Tmux() as t:
             t.command('set', '-g', '@flash-bin', str(BINARY))
