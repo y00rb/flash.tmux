@@ -75,6 +75,51 @@ fn distinctive_fixtures_are_detected() {
     }
 }
 #[test]
+fn cursor_local_detection_handles_cat_output_among_shell_text() {
+    use flash_tmux::model::ScreenPoint;
+    use flash_tmux::syntax::detect::resolve_at;
+    let text = "paul@host ~/checkout $ cat tests/snippets/rust.rs\nfn main() {\n    let value = 42;\n    if value > 0 {\n        println!(\"{}\", value);\n    }\n}\npaul@host ~/checkout $ tmux set-option -p @flash-treesitter-language auto\n";
+    let doc = source(text);
+    for cell in [8, 16] {
+        let parsed = resolve_at(
+            &doc,
+            LanguageChoice::Auto,
+            ScreenPoint { row: 2, cell },
+            Duration::from_millis(250),
+        )
+        .unwrap();
+        assert_eq!(parsed.language, LanguageId::Rust);
+        let nodes = parsed.ancestors_at(doc.byte_at(ScreenPoint { row: 2, cell }).unwrap());
+        assert!(
+            nodes
+                .iter()
+                .all(|node| node.bytes.start >= text.find("fn main").unwrap())
+        );
+        assert!(nodes.iter().any(|node| node.kind == "function_item"));
+    }
+    assert!(
+        resolve_at(
+            &doc,
+            LanguageChoice::Auto,
+            ScreenPoint { row: 0, cell: 0 },
+            Duration::from_millis(250)
+        )
+        .is_err()
+    );
+    for text in ["value", "{}", "value + 1;"] {
+        assert!(
+            resolve_at(
+                &source(text),
+                LanguageChoice::Auto,
+                ScreenPoint { row: 0, cell: 0 },
+                Duration::from_millis(250)
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
 fn no_detection_with_expired_budget() {
     assert!(detect(&source("fn main() {}"), Duration::ZERO).is_err());
 }

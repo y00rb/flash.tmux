@@ -24,12 +24,12 @@ pub fn run_syntax(
     prompt_width: usize,
 ) -> Result<Outcome> {
     use crate::{
-        syntax::{PARSE_BUDGET, detect::resolve, document::SourceDocument},
+        syntax::{PARSE_BUDGET, detect::resolve_at, document::SourceDocument},
         syntax_input::{SyntaxAction, SyntaxState},
         syntax_render::{render_syntax, syntax_prompt},
     };
     let source = SourceDocument::from_capture(capture)?;
-    let parsed = resolve(&source, config.language, PARSE_BUDGET)?;
+    let parsed = resolve_at(&source, config.language, origin, PARSE_BUDGET)?;
     let mut state = SyntaxState::new(mode, source, parsed, origin, config)?;
     terminal::enable_raw_mode()?;
     let _guard = TerminalGuard;

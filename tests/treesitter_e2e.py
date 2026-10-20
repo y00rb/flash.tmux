@@ -81,6 +81,30 @@ class SyntaxWorkflows(unittest.TestCase):
                 t.move('copy-selection')
                 self.assertEqual(t.command('show-buffer'), '\n'.join(rows))
 
+    def test_auto_detects_cat_rust_with_shell_output(self):
+        with Tmux(width=141, height=65) as t:
+            rows = ['INFO previous terminal output %02d' % i for i in range(40)]
+            rows += ['paul@host ~/checkout $ cat tests/snippets/rust.rs',
+                     'fn main() {', '    let value = 42;',
+                     '    if value > 0 {', '        println!("{}", value);',
+                     '    }', '}', 'paul@host ~/checkout $']
+            t.fixture(rows)
+            t.command('set-option', '-p', '-t', t.pane, '@flash-treesitter-language', 'auto')
+            t.command('copy-mode', '-t', t.pane)
+            t.move('top-line')
+            t.move('cursor-down', 42)
+            t.move('start-of-line')
+            t.move('cursor-right', 8)
+            t.output = b''
+            process = invoke(t, 'start', '--mode', 'treesitter')
+            t.wait(lambda: b'TS rust' in t.output or process.poll() is not None)
+            if process.poll() is not None:
+                self.fail(process.communicate()[1].decode())
+            os.write(t.master, b'\r')
+            self.finish(process)
+            t.move('copy-selection')
+            self.assertEqual(t.command('show-buffer'), 'value')
+
     def test_auto_detection_failure_reports_cause_without_moving_cursor(self):
         with Tmux() as t:
             t.fixture(['ordinary prose without a language declaration', 'END'])

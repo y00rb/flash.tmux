@@ -63,6 +63,43 @@ pub fn resolve(
     choice: LanguageChoice,
     budget: Duration,
 ) -> Result<ParsedSyntax> {
+    resolve_inner(document, choice, None, budget)
+}
+
+pub fn resolve_at(
+    document: &SourceDocument,
+    choice: LanguageChoice,
+    origin: crate::model::ScreenPoint,
+    budget: Duration,
+) -> Result<ParsedSyntax> {
+    resolve_inner(document, choice, document.byte_at(origin), budget)
+}
+
+fn local_score(parsed: &ParsedSyntax, byte: usize) -> Option<usize> {
+    let mut current = parsed
+        .tree
+        .root_node()
+        .named_descendant_for_byte_range(byte, byte);
+    while let Some(node) = current {
+        if node.start_byte() <= byte
+            && byte < node.end_byte()
+            && !node.has_error()
+            && !node.is_missing()
+            && indicator(parsed.language, node.kind())
+        {
+            return Some(100);
+        }
+        current = node.parent();
+    }
+    None
+}
+
+fn resolve_inner(
+    document: &SourceDocument,
+    choice: LanguageChoice,
+    focus: Option<usize>,
+    budget: Duration,
+) -> Result<ParsedSyntax> {
     let deadline = Instant::now() + budget.min(PARSE_BUDGET);
     if let LanguageChoice::Explicit(language) = choice {
         return ParsedSyntax::parse(
@@ -77,8 +114,65 @@ pub fn resolve(
         if remaining.is_zero() {
             return Err("syntax language detection deadline expired; set @flash-treesitter-language explicitly".into());
         }
-        let parsed = ParsedSyntax::parse(language, document, remaining)?;
-        if let Some(quality) = score(&parsed, document.text()) {
+        let mut parsed = ParsedSyntax::parse(language, document, remaining)?;
+        let mut quality = match focus {
+            Some(byte) => local_score(&parsed, byte).or_else(|| {
+                (!parsed.has_errors())
+                    .then(|| score(&parsed, document.text()))
+                    .flatten()
+            }),
+            None => score(&parsed, document.text()),
+        };
+        if quality.is_none()
+            && let Some(byte) = focus
+        {
+            // A shell command preceding `cat` can make a parser consume the
+            // following declaration as an erroneous header. Try logical-line
+            // starts, preserving every byte offset with blank prefix padding.
+            let starts: Vec<_> = document.text()[..byte]
+                .match_indices('\n')
+                .map(|(index, _)| index + 1)
+                .rev()
+                .take(32)
+                .filter(|start| {
+                    let line = document.text()[*start..]
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim();
+                    // Only a cheap admission filter; the grammar must still
+                    // prove a valid enclosing declaration before acceptance.
+                    line.contains(['(', '{'])
+                        || [
+                            "def ",
+                            "class ",
+                            "struct ",
+                            "impl ",
+                            "function ",
+                            "local ",
+                            "package ",
+                            "<?php",
+                        ]
+                        .iter()
+                        .any(|prefix| line.starts_with(prefix))
+                })
+                .collect();
+            for start in starts {
+                let mut text = String::with_capacity(document.text().len());
+                for ch in document.text()[..start].bytes() {
+                    text.push(if ch == b'\n' { '\n' } else { ' ' });
+                }
+                text.push_str(&document.text()[start..]);
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let recovered = ParsedSyntax::parse_text(language, &text, remaining)?;
+                if let Some(score) = local_score(&recovered, byte) {
+                    quality = Some(score);
+                    parsed = recovered;
+                    break;
+                }
+            }
+        }
+        if let Some(quality) = quality {
             candidates.push((quality, parsed));
         }
     }
