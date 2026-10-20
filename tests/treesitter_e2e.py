@@ -1,24 +1,81 @@
 #!/usr/bin/env python3
 """Syntax workflows on disposable servers only; never the user's session."""
 import os
+from pathlib import Path
+import shlex
+import shutil
 import subprocess
+import tempfile
 import unittest
+from unittest.mock import patch
 from e2e import invoke, ROOT, BINARY
 from tmux_harness import Tmux
 
 
+# Tall panes require per-row tmux capture before the first prompt. Hosted macOS
+# runners can exceed the harness's 3s default; this is not a latency assertion.
+SYNTAX_START_TIMEOUT = 15
+
+
 class SyntaxWorkflows(unittest.TestCase):
+    def wait_for_prompt(self, t, process, language='rust'):
+        marker = ('TS ' + language).encode()
+        try:
+            t.wait(lambda: marker in t.output or process.poll() is not None,
+                   timeout=SYNTAX_START_TIMEOUT)
+        except AssertionError:
+            was_running = process.poll() is None
+            if was_running:
+                process.kill()
+            _, stderr = process.communicate(timeout=5)
+            self.fail(f'syntax prompt missing after {SYNTAX_START_TIMEOUT}s; '
+                      f'process_running={was_running}; stderr={stderr.decode()!r}; '
+                      f'terminal_tail={t.output[-500:]!r}')
+        if process.poll() is not None:
+            _, stderr = process.communicate(timeout=5)
+            self.fail(f'syntax process exited before prompt (status {process.returncode}): '
+                      + stderr.decode())
+
     def open(self, t, mode):
         t.command('set-option', '-p', '-t', t.pane,
                   '@flash-treesitter-language', 'rust')
         t.output = b''
         process = invoke(t, 'start', '--mode', mode)
-        t.wait(lambda: b'TS' in t.output)
+        self.wait_for_prompt(t, process)
         return process
 
     def finish(self, process):
         _, stderr = process.communicate(timeout=5)
         self.assertEqual(process.returncode, 0, stderr.decode())
+
+    def test_slow_capture_still_reaches_prompt_and_selects_exact_range(self):
+        real_tmux = shutil.which('tmux')
+        with Tmux() as t, tempfile.TemporaryDirectory() as tmp:
+            t.fixture(['fn main() { let value = 42; }', 'END'])
+            t.command('copy-mode', '-t', t.pane)
+            marker = Path(tmp) / 'capture-delayed'
+            wrapper = Path(tmp) / 'tmux'
+            wrapper.write_text('#!/bin/sh\n'
+                               'if [ "$1" = capture-pane ] && [ ! -e "$FLASH_SLOW_CAPTURE_MARKER" ]; then\n'
+                               '    : > "$FLASH_SLOW_CAPTURE_MARKER"\n'
+                               '    sleep 4\n'
+                               'fi\nexec ' + shlex.quote(real_tmux) + ' "$@"\n')
+            wrapper.chmod(0o755)
+            with patch.dict(os.environ, PATH=tmp + os.pathsep + os.environ['PATH'],
+                            FLASH_SLOW_CAPTURE_MARKER=str(marker)):
+                process = self.open(t, 'treesitter-search')
+            self.assertTrue(marker.exists())
+            os.write(t.master, b'value\r')
+            self.finish(process)
+            t.move('copy-selection')
+            self.assertEqual(t.command('show-buffer'), 'value')
+
+    def test_prompt_wait_reports_early_process_failure(self):
+        with Tmux() as t:
+            t.output = b''
+            process = invoke(t, 'start', '--mode', 'invalid-mode')
+            with self.assertRaisesRegex(AssertionError, 'mode must be search'):
+                self.wait_for_prompt(t, process)
 
     def test_s_confirm_smallest_and_expand(self):
         with Tmux() as t:
@@ -61,7 +118,7 @@ class SyntaxWorkflows(unittest.TestCase):
                 t.move('cursor-right', text.index('1'))
                 t.output = b''
                 os.write(t.master, key)
-                t.wait(lambda: b'TS rust' in t.output)
+                t.wait(lambda: b'TS rust' in t.output, timeout=SYNTAX_START_TIMEOUT)
                 os.write(t.master, query)
                 start = text.index('1') if key == b'S' else text.index('value')
                 t.wait(lambda: t.command('display', '-p', '#{selection_start_x}').strip() == str(start))
@@ -97,9 +154,7 @@ class SyntaxWorkflows(unittest.TestCase):
             t.move('cursor-right', 8)
             t.output = b''
             process = invoke(t, 'start', '--mode', 'treesitter')
-            t.wait(lambda: b'TS rust' in t.output or process.poll() is not None)
-            if process.poll() is not None:
-                self.fail(process.communicate()[1].decode())
+            self.wait_for_prompt(t, process)
             os.write(t.master, b'\r')
             self.finish(process)
             t.move('copy-selection')
@@ -121,9 +176,7 @@ class SyntaxWorkflows(unittest.TestCase):
             t.move('cursor-right', 15)
             t.output = b''
             process = invoke(t, 'start', '--mode', 'treesitter')
-            t.wait(lambda: b'TS go' in t.output or process.poll() is not None)
-            if process.poll() is not None:
-                self.fail(process.communicate()[1].decode())
+            self.wait_for_prompt(t, process, 'go')
             os.write(t.master, b'\r')
             self.finish(process)
             t.move('copy-selection')
