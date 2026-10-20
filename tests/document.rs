@@ -11,6 +11,21 @@ fn document(rows: &[&str], wraps: Vec<bool>) -> SourceDocument {
     .unwrap()
 }
 #[test]
+fn joined_capture_distinguishes_wraps_from_full_width_hard_lines() {
+    use flash_tmux::syntax::document::decode_capture_pair;
+    assert_eq!(
+        decode_capture_pair("abc  \n", "abc  def\n").unwrap(),
+        ("abc  ".into(), true)
+    );
+    assert_eq!(
+        decode_capture_pair("abc\n", "abc\ndef\n").unwrap(),
+        ("abc".into(), false)
+    );
+    assert!(decode_capture_pair("abc\n", "changed\n").is_err());
+    assert!(decode_capture_pair("abc", "abcdef\n").is_err());
+}
+
+#[test]
 fn newline_end_does_not_include_next_line() {
     let doc = document(&["abc", "def"], vec![false, false]);
     assert_eq!(doc.text(), "abc\ndef");

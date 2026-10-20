@@ -5,6 +5,23 @@ use crate::{
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
+// -J preserves trailing cells even for a single-row capture. Comparing the
+// same row with a two-row joined capture exposes tmux's actual wrap flag.
+pub fn decode_capture_pair(single: &str, pair: &str) -> Result<(String, bool)> {
+    let row = single
+        .strip_suffix('\n')
+        .ok_or("incomplete syntax row capture")?;
+    if row.contains('\n') || !pair.ends_with('\n') || !pair.starts_with(row) {
+        return Err("syntax rows changed during capture".into());
+    }
+    let remainder = &pair[row.len()..];
+    match remainder.bytes().filter(|ch| *ch == b'\n').count() {
+        1 => Ok((row.into(), true)),
+        2 if remainder.starts_with('\n') => Ok((row.into(), false)),
+        _ => Err("ambiguous syntax wrap metadata".into()),
+    }
+}
+
 pub struct CapturedDocument {
     pub view: Viewport,
     pub wraps: Vec<bool>,

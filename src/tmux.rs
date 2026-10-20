@@ -136,6 +136,77 @@ pub fn validate_snapshot(original: &Snapshot) -> Result<bool> {
     Ok(snapshot(&original.pane, &original.client).is_ok_and(|current| current == *original))
 }
 
+pub fn syntax_capture(original: &Snapshot) -> Result<crate::syntax::document::CapturedDocument> {
+    use crate::syntax::document::{CapturedDocument, decode_capture_pair};
+    if !validate_snapshot(original)? {
+        return Err("copy-mode viewport changed; syntax capture cancelled".into());
+    }
+    let parts: Vec<_> = original.state.split(';').collect();
+    let scroll: i64 = parts[2].parse()?;
+    let height = original.viewport.rows.len();
+    let history: i64 = command(&[
+        "display-message",
+        "-p",
+        "-t",
+        &original.pane,
+        "#{history_size}",
+    ])?
+    .trim()
+    .parse()?;
+    let capture = |first: i64, last: i64| {
+        command(&[
+            "capture-pane",
+            "-p",
+            "-J",
+            "-t",
+            &original.pane,
+            "-S",
+            &first.to_string(),
+            "-E",
+            &last.to_string(),
+        ])
+    };
+    if -scroll > -history {
+        let previous = capture(-scroll - 1, -scroll - 1)?;
+        let pair = capture(-scroll - 1, -scroll)?;
+        if decode_capture_pair(&previous, &pair)?.1 {
+            return Err("syntax viewport starts inside a wrapped line; scroll to its start".into());
+        }
+    }
+    let mut rows = Vec::with_capacity(height);
+    let mut wraps = Vec::with_capacity(height);
+    for index in 0..height {
+        let absolute = index as i64 - scroll;
+        let single = capture(absolute, absolute)?;
+        let (row, wrapped) = if absolute + 1 < height as i64 {
+            decode_capture_pair(&single, &capture(absolute, absolute + 1)?)?
+        } else {
+            (
+                single
+                    .strip_suffix('\n')
+                    .ok_or("incomplete syntax capture")?
+                    .into(),
+                false,
+            )
+        };
+        if row.trim_end_matches(' ') != original.viewport.rows[index].trim_end_matches(' ') {
+            return Err("syntax rows changed during capture".into());
+        }
+        rows.push(row);
+        wraps.push(wrapped);
+    }
+    if wraps.last() == Some(&true) {
+        return Err("syntax viewport ends inside a wrapped line; scroll to include its end".into());
+    }
+    if !validate_snapshot(original)? {
+        return Err("copy-mode viewport changed during syntax capture".into());
+    }
+    Ok(CapturedDocument {
+        view: Viewport::new(rows, original.viewport.width),
+        wraps,
+    })
+}
+
 pub fn apply_jump(original: &Snapshot, point: ScreenPoint) -> Result<()> {
     if point.row >= original.viewport.rows.len() || point.cell >= original.viewport.width {
         return Err("selected coordinate outside viewport".into());

@@ -38,6 +38,25 @@ class Contracts(unittest.TestCase):
             self.assertEqual(t.command('show-buffer'), 'target')
             print('coordinate contract: cells differ from motion counts; combining marks consume no motion')
 
+    def test_joined_capture_exposes_wraps_and_preserves_spaces(self):
+        with Tmux(width=30, height=12) as t:
+            rows = ['abcdefghijklmnopqrstuvwxyz1234567890',
+                    'x' * 30, 'next', 'space  ', '\u4e2d' * 18, 'END']
+            t.fixture(rows)
+            t.command('copy-mode', '-t', t.pane)
+            def joined(first, last):
+                return t.command('capture-pane', '-p', '-J', '-t', t.pane,
+                                 '-S', str(first), '-E', str(last))
+            self.assertEqual(joined(0, 0), 'abcdefghijklmnopqrstuvwxyz1234\n')
+            self.assertEqual(joined(0, 1), rows[0] + '\n')
+            self.assertEqual(joined(2, 3), 'x' * 30 + '\nnext\n')
+            self.assertEqual(joined(4, 4), 'space  \n')
+            self.assertEqual(joined(5, 6), '\u4e2d' * 18 + '\n')
+            self.assertEqual(joined(8, 9), '\n\n')
+            # The same metadata is available while copy-mode is scrolled.
+            t.move('history-top')
+            self.assertEqual(joined(0, 1), rows[0] + '\n')
+
     def test_popup_prompt_without_obscuring_viewport(self):
         with Tmux() as t:
             rows = ['ROW%02d' % i for i in range(23)]
