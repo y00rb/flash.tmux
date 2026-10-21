@@ -161,6 +161,45 @@ fn cursor_detection_handles_go_among_prior_code_and_shell_history() {
 }
 
 #[test]
+fn selection_detection_does_not_build_unrelated_viewport_fallback() {
+    use flash_tmux::{
+        model::ScreenPoint,
+        syntax::detect::{resolve_at, resolve_selection_at},
+    };
+    let mut rows = vec!["old terminal output that is not Rust".to_string(); 40];
+    rows.extend([
+        "fn main() {".into(),
+        "    let value = 42;".into(),
+        "}".into(),
+    ]);
+    rows.extend(vec!["".into(); 20]);
+    rows.extend(["fn later() { let other = 7; }".into()]);
+    let text = rows.join("\n");
+    let doc = source(&text);
+    let origin = ScreenPoint { row: 41, cell: 8 };
+    let local = resolve_selection_at(
+        &doc,
+        LanguageChoice::Auto,
+        origin,
+        Duration::from_millis(250),
+    )
+    .unwrap();
+    let search = resolve_at(
+        &doc,
+        LanguageChoice::Auto,
+        origin,
+        Duration::from_millis(250),
+    )
+    .unwrap();
+    let later = text.find("other").unwrap();
+    assert!(local.ancestors_at(later).is_empty());
+    assert!(!search.ancestors_at(later).is_empty());
+    let nodes = local.ancestors_at(doc.byte_at(origin).unwrap());
+    assert!(nodes.iter().any(|node| node.kind == "function_item"));
+    assert_eq!(&text[nodes[0].bytes.clone()], "value");
+}
+
+#[test]
 fn no_detection_with_expired_budget() {
     assert!(detect(&source("fn main() {}"), Duration::ZERO).is_err());
 }
