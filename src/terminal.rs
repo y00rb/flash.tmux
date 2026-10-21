@@ -22,7 +22,11 @@ pub fn run_syntax(
     snapshot: &tmux::Snapshot,
 ) -> Result<Outcome> {
     use crate::{
-        syntax::{PARSE_BUDGET, detect::resolve_at, document::SourceDocument},
+        syntax::{
+            PARSE_BUDGET,
+            detect::{resolve_at, resolve_selection_at},
+            document::SourceDocument,
+        },
         syntax_input::{SyntaxAction, SyntaxState},
         syntax_render::{render_syntax, syntax_prompt},
     };
@@ -30,7 +34,11 @@ pub fn run_syntax(
     let client = &snapshot.client;
     let prompt_width = snapshot.client_width;
     let source = SourceDocument::from_capture(capture)?;
-    let parsed = resolve_at(&source, config.language, origin, PARSE_BUDGET)?;
+    let parsed = if mode == crate::model::InteractionMode::Treesitter {
+        resolve_selection_at(&source, config.language, origin, PARSE_BUDGET)?
+    } else {
+        resolve_at(&source, config.language, origin, PARSE_BUDGET)?
+    };
     let mut state = SyntaxState::new(mode, source, parsed, origin, config)?;
     terminal::enable_raw_mode()?;
     let _guard = TerminalGuard;

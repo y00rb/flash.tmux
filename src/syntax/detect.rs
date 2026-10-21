@@ -102,7 +102,7 @@ pub fn resolve(
     choice: LanguageChoice,
     budget: Duration,
 ) -> Result<ParsedSyntax> {
-    resolve_inner(document, choice, None, budget)
+    resolve_inner(document, choice, None, budget, true)
 }
 
 pub fn resolve_at(
@@ -111,7 +111,28 @@ pub fn resolve_at(
     origin: crate::model::ScreenPoint,
     budget: Duration,
 ) -> Result<ParsedSyntax> {
-    resolve_inner(document, choice, document.cursor_byte_at(origin), budget)
+    resolve_inner(
+        document,
+        choice,
+        document.cursor_byte_at(origin),
+        budget,
+        true,
+    )
+}
+
+pub fn resolve_selection_at(
+    document: &SourceDocument,
+    choice: LanguageChoice,
+    origin: crate::model::ScreenPoint,
+    budget: Duration,
+) -> Result<ParsedSyntax> {
+    resolve_inner(
+        document,
+        choice,
+        document.cursor_byte_at(origin),
+        budget,
+        false,
+    )
 }
 
 fn resolve_inner(
@@ -119,6 +140,7 @@ fn resolve_inner(
     choice: LanguageChoice,
     focus: Option<usize>,
     budget: Duration,
+    include_fallback: bool,
 ) -> Result<ParsedSyntax> {
     let deadline = Instant::now() + budget.min(PARSE_BUDGET);
     if let LanguageChoice::Explicit(language) = choice {
@@ -166,7 +188,14 @@ fn resolve_inner(
                     language,
                     &text[start..end],
                     deadline.saturating_duration_since(Instant::now()),
-                )?;
+                )
+                .map_err(|error| -> crate::Error {
+                    format!(
+                        "{error} during {} local language detection",
+                        language.name()
+                    )
+                    .into()
+                })?;
                 if local_score(&parsed, &text[start..end], byte - start) {
                     let strength = if matches!(language, LanguageId::C | LanguageId::Cpp) {
                         100
@@ -192,13 +221,24 @@ fn resolve_inner(
             }
             if !candidates.is_empty() {
                 let (_, mut parsed) = candidates.remove(0);
-                let full = ParsedSyntax::parse(
-                    parsed.language,
-                    document,
-                    deadline.saturating_duration_since(Instant::now()),
-                )?;
+                // S only selects ancestors at this cursor; parsing unrelated
+                // terminal history again is necessary for R's remote hits only.
+                if include_fallback {
+                    let full = ParsedSyntax::parse(
+                        parsed.language,
+                        document,
+                        deadline.saturating_duration_since(Instant::now()),
+                    )
+                    .map_err(|error| -> crate::Error {
+                        format!(
+                            "{error} while preparing {} full-viewport search",
+                            parsed.language.name()
+                        )
+                        .into()
+                    })?;
+                    parsed.fallback = Some(full.tree);
+                }
                 parsed.offset = start;
-                parsed.fallback = Some(full.tree);
                 return Ok(parsed);
             }
         }
