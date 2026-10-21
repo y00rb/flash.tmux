@@ -21,7 +21,10 @@ pub fn command(args: &[&str]) -> Result<String> {
 
 pub fn config() -> Result<Config> {
     let mut options = BTreeMap::new();
-    for (name, _) in DEFAULTS {
+    for (name, _) in DEFAULTS
+        .into_iter()
+        .chain([("flash-treesitter-language", "auto")])
+    {
         let option = format!("@{name}");
         if !command(&["show-option", "-gq", &option])?.is_empty() {
             options.insert(
@@ -33,6 +36,22 @@ pub fn config() -> Result<Config> {
         }
     }
     Config::from_options(&options)
+}
+
+pub fn config_for_pane(pane: &str) -> Result<Config> {
+    let mut config = config()?;
+    let local = command(&[
+        "show-options",
+        "-p",
+        "-qv",
+        "-t",
+        pane,
+        "@flash-treesitter-language",
+    ])?;
+    if !local.is_empty() {
+        config.language = local.trim_end_matches('\n').parse()?;
+    }
+    Ok(config)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,7 +131,7 @@ pub fn snapshot(pane: &str, client: &str) -> Result<Snapshot> {
         0
     };
     let snapshot = Snapshot {
-        version: 1,
+        version: 2,
         pane: pane.into(),
         client: client.into(),
         viewport: Viewport::new(rows, width),
@@ -136,6 +155,77 @@ pub fn validate_snapshot(original: &Snapshot) -> Result<bool> {
     Ok(snapshot(&original.pane, &original.client).is_ok_and(|current| current == *original))
 }
 
+pub fn syntax_capture(original: &Snapshot) -> Result<crate::syntax::document::CapturedDocument> {
+    use crate::syntax::document::{CapturedDocument, decode_capture_pair};
+    if !validate_snapshot(original)? {
+        return Err("copy-mode viewport changed; syntax capture cancelled".into());
+    }
+    let parts: Vec<_> = original.state.split(';').collect();
+    let scroll: i64 = parts[2].parse()?;
+    let height = original.viewport.rows.len();
+    let history: i64 = command(&[
+        "display-message",
+        "-p",
+        "-t",
+        &original.pane,
+        "#{history_size}",
+    ])?
+    .trim()
+    .parse()?;
+    let capture = |first: i64, last: i64| {
+        command(&[
+            "capture-pane",
+            "-p",
+            "-J",
+            "-t",
+            &original.pane,
+            "-S",
+            &first.to_string(),
+            "-E",
+            &last.to_string(),
+        ])
+    };
+    if -scroll > -history {
+        let previous = capture(-scroll - 1, -scroll - 1)?;
+        let pair = capture(-scroll - 1, -scroll)?;
+        if decode_capture_pair(&previous, &pair)?.1 {
+            return Err("syntax viewport starts inside a wrapped line; scroll to its start".into());
+        }
+    }
+    let mut rows = Vec::with_capacity(height);
+    let mut wraps = Vec::with_capacity(height);
+    for index in 0..height {
+        let absolute = index as i64 - scroll;
+        let single = capture(absolute, absolute)?;
+        let (row, wrapped) = if absolute + 1 < height as i64 {
+            decode_capture_pair(&single, &capture(absolute, absolute + 1)?)?
+        } else {
+            (
+                single
+                    .strip_suffix('\n')
+                    .ok_or("incomplete syntax capture")?
+                    .into(),
+                false,
+            )
+        };
+        if row.trim_end_matches(' ') != original.viewport.rows[index].trim_end_matches(' ') {
+            return Err("syntax rows changed during capture".into());
+        }
+        rows.push(row);
+        wraps.push(wrapped);
+    }
+    if wraps.last() == Some(&true) {
+        return Err("syntax viewport ends inside a wrapped line; scroll to include its end".into());
+    }
+    if !validate_snapshot(original)? {
+        return Err("copy-mode viewport changed during syntax capture".into());
+    }
+    Ok(CapturedDocument {
+        view: Viewport::new(rows, original.viewport.width),
+        wraps,
+    })
+}
+
 pub fn apply_jump(original: &Snapshot, point: ScreenPoint) -> Result<()> {
     if point.row >= original.viewport.rows.len() || point.cell >= original.viewport.width {
         return Err("selected coordinate outside viewport".into());
@@ -143,6 +233,12 @@ pub fn apply_jump(original: &Snapshot, point: ScreenPoint) -> Result<()> {
     if !validate_snapshot(original)? {
         return Err("copy-mode viewport changed; jump cancelled".into());
     }
+    let args = movement(original, point);
+    command(&args.iter().map(String::as_str).collect::<Vec<_>>())?;
+    Ok(())
+}
+
+fn movement(original: &Snapshot, point: ScreenPoint) -> Vec<String> {
     let mut args = vec![
         "send-keys".to_string(),
         "-t".into(),
@@ -184,6 +280,58 @@ pub fn apply_jump(original: &Snapshot, point: ScreenPoint) -> Result<()> {
             "-X".into(),
             "-N".into(),
             motions.to_string(),
+            "cursor-right".into(),
+        ]);
+    }
+    args
+}
+
+pub fn apply_range(original: &Snapshot, range: crate::model::ScreenRange) -> Result<()> {
+    let source = crate::syntax::document::SourceDocument::from_capture(&syntax_capture(original)?)?;
+    if (range.start.row, range.start.cell) > (range.end.row, range.end.cell)
+        || source.byte_at(range.start).is_none()
+        || source.byte_at(range.end).is_none()
+    {
+        return Err("invalid syntax selection range".into());
+    }
+    if !validate_snapshot(original)? {
+        return Err("copy-mode changed; selection cancelled".into());
+    }
+    let mut args: Vec<String> = vec![
+        "send-keys".into(),
+        "-t".into(),
+        original.pane.clone(),
+        "-X".into(),
+        "clear-selection".into(),
+    ];
+    args.extend([
+        ";".into(),
+        "send-keys".into(),
+        "-t".into(),
+        original.pane.clone(),
+        "-X".into(),
+        "rectangle-off".into(),
+    ]);
+    args.push(";".into());
+    args.extend(movement(original, range.start));
+    args.extend([
+        ";".into(),
+        "send-keys".into(),
+        "-t".into(),
+        original.pane.clone(),
+        "-X".into(),
+        "begin-selection".into(),
+        ";".into(),
+    ]);
+    args.extend(movement(original, range.end));
+    let keys = command(&["show-options", "-wqv", "-t", &original.pane, "mode-keys"])?;
+    if keys.trim() == "emacs" {
+        args.extend([
+            ";".into(),
+            "send-keys".into(),
+            "-t".into(),
+            original.pane.clone(),
+            "-X".into(),
             "cursor-right".into(),
         ]);
     }

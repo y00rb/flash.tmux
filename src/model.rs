@@ -8,6 +8,12 @@ pub struct ScreenPoint {
     pub cell: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreenRange {
+    pub start: ScreenPoint,
+    pub end: ScreenPoint,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Viewport {
     pub rows: Vec<String>,
@@ -34,10 +40,29 @@ pub struct LabeledMatch {
     pub position: ScreenPoint,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InteractionMode {
+    Search,
+    Treesitter,
+    TreesitterSearch,
+}
+impl std::str::FromStr for InteractionMode {
+    type Err = crate::Error;
+    fn from_str(value: &str) -> crate::Result<Self> {
+        match value {
+            "search" => Ok(Self::Search),
+            "treesitter" => Ok(Self::Treesitter),
+            "treesitter-search" => Ok(Self::TreesitterSearch),
+            _ => Err("mode must be search, treesitter, or treesitter-search".into()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Outcome {
     Cancelled,
     Selected { point: ScreenPoint },
+    RangeSelected { range: ScreenRange },
 }
 
 pub fn grapheme_width(text: &str, column: usize) -> usize {

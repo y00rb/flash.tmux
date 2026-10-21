@@ -10,7 +10,7 @@
 
 ### 1. 搜索与字母标签跳转
 
-**操作：** 在仓库目录执行 `head -n 16 src/config.rs`。按 `prefix + [` 进入 copy-mode，按 `S`，输入 `flash`，停在选择标签之前。
+**操作：** 在仓库目录执行 `head -n 16 src/config.rs`。按 `prefix + [` 进入 copy-mode，按 `s`，输入 `flash`，停在选择标签之前。
 
 **截图效果：** 蓝色 `⚡` 提示栏显示查询词、匹配数和标签数；匹配内容高亮，并在旁边显示粉色单字符标签。按屏幕上显示的标签，就能跳到对应匹配的起点。标签取决于当前光标和可见内容，无需记忆截图中的具体字母。
 
@@ -21,8 +21,8 @@
 **操作：** 保持同一份文件输出，在 copy-mode 中从没有活动选区的状态开始：
 
 ```text
-S → DEFAULTS: → Enter → 0 → v
-S → flash-prompt-fg → Enter → j → $
+s → DEFAULTS: → Enter → 0 → v
+s → flash-prompt-fg → Enter → j → $
 ```
 
 第一次搜索定位声明，`0` 移到行首，`v` 设置选择起点。第二次搜索把选区扩展到最后一个配置项附近，再用 `j` 和 `$` 包含结尾的 `];` 行。
@@ -33,19 +33,126 @@ S → flash-prompt-fg → Enter → j → $
 
 ### 3. 仅搜索当前 Pane
 
-**操作：** 退出 copy-mode，用你配置的快捷键左右分屏（本例为 `prefix + h`）。右侧执行 `head -n 15 Cargo.toml`；左侧执行 `head -n 16 src/config.rs`，再进入 copy-mode，按 `S`，输入 `flash-`，停在选择标签之前。
+**操作：** 退出 copy-mode，用你配置的快捷键左右分屏（本例为 `prefix + h`）。右侧执行 `head -n 15 Cargo.toml`；左侧执行 `head -n 16 src/config.rs`，再进入 copy-mode，按 `s`，输入 `flash-`，停在选择标签之前。
 
 **截图效果：** 只有左侧 pane 暗化并显示匹配高亮、跳转标签；右侧保持正常颜色，没有搜索标签。蓝色 `⚡` 提示栏显示本次查询和匹配、标签数量。
 
 ![左侧 pane 进行搜索，右侧 Cargo.toml 的显示保持不变](assets/screenshots/3-split-pane.png)
 
+### 4. 从光标位置扩大语法选区
+
+**操作：** 在仓库根目录执行 `cat tests/snippets/rust.rs`。进入 copy-mode，把光标移到 `42` 上，按 `S`。连续按两次 `;`，先预览 `let_declaration`，再扩大到 `block`；停在按 Enter 确认之前。按 `,` 可以缩小范围，按 Esc 可以取消。
+
+**截图效果：** 函数体处于预览状态，提示栏通过 `[block]` 标明当前节点。粉色标签可以直接选择其他祖先节点。这只是浮层预览，尚未替换 tmux 的实际选区；按 Enter 才会确认。
+
+![S 从 42 扩大到外围 Rust 代码块的预览](assets/screenshots/4-treesitter-range-preview.png)
+
+### 5. 搜索文字并选择外围语法范围
+
+**操作：** 在同一份可见 Rust 示例中，先用 Esc 取消上一例的预览，把光标移到代码的其他位置。按 `R`，输入 `42`，停在选择标签或按 Enter 之前。
+
+**截图效果：** 查询命中 `42`，标签分别对应它的 `integer_literal`、`let_declaration`、`block`、`function_item` 等范围。根据需要选择代码结构，而不只是命中的文字。标签字母以当前界面为准；在这个搜索模式中，`;`、`,` 不是扩大/缩小命令。
+
+![R 搜索 42，同时展示源码和外围语法范围标签](assets/screenshots/5-treesitter-search-labels.png)
+
+### 6. 从搜索命中直接选中完整函数
+
+**操作：** 接着第 5 例，按提示栏中 `function_item` 对应的标签。浮层关闭后，停在复制或取消选区之前。
+
+**截图效果：** 从 `fn main()` 到最后一个 `}` 的完整函数被选中，不包含 shell 命令和提示符，语法标签已经消失。接下来使用你自己的复制绑定即可，不改变原有 tmux 复制流程。
+
+![通过 R 搜索直接确认完整 Rust 函数选区](assets/screenshots/6-treesitter-function-selection.png)
+
 ## 环境要求
 
+- 推荐安装方式需要 [TPM](https://github.com/tmux-plugins/tpm)；尚未安装时按下方步骤安装，也可选择不依赖 TPM 的手动安装。
 - tmux 3.3 或更新版本，支持 popup。目前本机验证环境为 macOS arm64、tmux 3.6a。
 - 顶部或底部需要有可见的 tmux 状态栏。搜索提示显示在消息栏中，避免遮挡原始内容行。`status off` 时插件会给出错误提示，不修改原 pane。
 - 支持真彩色的终端，以显示默认的 Catppuccin Frappe 配色。
-- 兼容的预编译程序，或者用于源码构建的 Rust/Cargo。运行预编译程序不需要安装 Rust；Python 3.11+ 仅用于开发和发布测试。
+- 兼容的预编译程序，或者用于源码构建的 Rust 1.90+、Cargo 和 C 编译器。运行预编译程序不需要安装 Rust；Python 3.11+ 仅用于开发和发布测试。
 - 自动安装需要 Git、curl、tar，以及 sha256sum 或 shasum，并且能够访问公开的 GitHub Release。
+
+## 功能特性
+
+- **增量搜索（`s`）**：输入足够的可见文字后，用标签或 Enter 跳转。采用字面匹配、智能大小写和 Unicode 光标定位。
+- **不抢占查询输入的标签**：可能继续扩展当前搜索词的字符不会分配为跳转标签，避免输入和选择相互冲突。
+- **语法选择（`S`）**：选择光标所在的命名语法节点及其祖先，用 `;` 扩大、`,` 缩小，也可以直接选择范围标签。
+- **语法搜索（`R`）**：搜索文字后直接选择对应的声明、代码块或函数，不必先移动到命中位置。
+- **内置语言解析器**：提供 15 个 Tree-sitter 解析器，默认自动识别，也支持按窗格指定语言；无需 Neovim 或额外安装 Tree-sitter。
+- **保留复制习惯**：普通搜索延伸已有选区，语法选择建立精确的字符选区；复制绑定和剪贴板仍由你的配置控制。
+- **当前窗格隔离**：只处理当前窗格的可见内容，不交换或调整原窗格大小。
+- **安全预览与取消**：预览不修改真实光标和选区；Esc/Ctrl+C 取消，视口或状态变化会使待执行的语法操作失效。
+
+## 使用 TPM 安装
+
+推荐通过 [TPM（Tmux Plugin Manager）](https://github.com/tmux-plugins/tpm) 安装。已经配置 TPM 时，只需在 TPM 初始化行**之前**添加以下声明，重载 tmux 配置，再按 `prefix + I`：
+
+```tmux
+set -g @plugin 'y00rb/flash.tmux'
+```
+
+### 尚未安装 TPM
+
+先在 shell 中克隆 TPM：
+
+```sh
+git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm
+```
+
+将以下内容加入 `~/.tmux.conf`。如果使用其他配置路径，请编辑并重载实际的配置文件。TPM 初始化必须放在配置文件**末尾**，位于插件选项和插件声明之后：
+
+```tmux
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'y00rb/flash.tmux'
+
+# 放在 tmux.conf 的末尾。
+run '~/.tmux/plugins/tpm/tpm'
+```
+
+在 tmux 内的 shell 中重载配置：
+
+```sh
+tmux source-file ~/.tmux.conf
+```
+
+然后按 `prefix + I`，其中 I 为大写，默认操作是先按 `Ctrl+b`，松开后再按 `Shift+i`。TPM 会安装并加载插件。支持预编译程序的平台无需 Rust 工具链，但必须已有对应的公开 GitHub Release。
+
+### 预编译程序与更新
+
+不带标签的插件声明跟踪仓库默认分支。使用 TPM 的 `prefix + U` 更新后，重新加载配置；更新前应确认 checkout 的 `VERSION` 已有对应公开 Release。入口脚本加载时会同步二进制版本；Release 不存在时会报错，不使用不兼容的旧程序。
+
+TPM 负责克隆插件；`flash.tmux` 将 checkout 中 `VERSION` 对应的程序安装到插件的 `bin/` 目录。仓库地址从公开 GitHub 仓库的 HTTPS/SSH origin 中识别，不下载 `latest`，不需要 Rust；已有兼容程序时不联网。私有仓库或需要鉴权的 Release 不支持自动下载。
+
+### 不使用 TPM 安装
+
+TPM 不是运行时依赖。不使用插件管理器也可以安装预编译程序：
+
+```sh
+git clone https://github.com/y00rb/flash.tmux.git ~/.tmux/plugins/flash.tmux
+```
+
+在 tmux 配置中使用以下手动加载行，不添加 TPM 插件声明：
+
+```tmux
+run-shell 'sh ~/.tmux/plugins/flash.tmux/flash.tmux'
+```
+
+重载配置后，入口脚本会像 TPM 安装时一样下载对应的预编译程序。TPM 加载和手动加载二选一，不要重复配置。源码构建或离线安装见后面的源码安装章节。
+
+本地开发保留 `@flash-bin`；测试 Release 安装时，从配置中移除这个覆盖，并执行 `tmux set-option -gu @flash-bin` 后再重载。只删除配置行不会清除正在运行的 tmux server 中的选项。下载失败时，等待 Release 公开后重新加载插件，或者在插件目录执行 `sh scripts/ensure.sh` 重试。搜索按键本身不触发下载。
+
+也可以手动安装某个已发布版本：
+
+```sh
+# 在安装后的插件目录中执行，替换为实际的仓库和版本标签。
+sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
+```
+
+安装脚本会选择对应的 macOS arm64/x86_64 或 Linux arm64/x86_64 musl 程序，验证 SHA-256 和程序版本，然后原子替换 `bin/flash-tmux`，并在 `bin/install-info` 中记录版本与平台。下载、校验或运行失败时会保留原有程序。并发安装会串行处理；若安装进程被强制结束，需要先检查 `bin/.install-lock/pid`，确认进程已退出，再删除遗留锁并重试。不支持的平台或离线环境可以源码构建并设置 `@flash-bin`。
+
+推送 `vX.Y.Z` 标签会触发发布；`VERSION`、Cargo.toml 与标签必须一致。发布依赖检查成功，再构建四个平台、核对程序版本，准备完整的草稿附件后公开 Release。上传失败的草稿可重试；已公开版本不覆盖，修复问题应发布新版本。预发布会标记为 prerelease，普通分支 push 不发布 Release。
+
+Linux musl 构建旨在减少对 glibc 版本的依赖，并不保证适用于所有内核、终端或发行版。校验和用于检测文件损坏，不能防范发布者或发布渠道被入侵。
 
 ## 本地开发与源码安装
 
@@ -68,51 +175,15 @@ run-shell 'sh /path/to/flash.tmux/flash.tmux'
 
 需要优化构建时，执行 `cargo build --release`，并将 `@flash-bin` 改为 `/path/to/flash.tmux/target/release/flash-tmux`。
 
-显式设置 `@flash-bin` 后始终跳过 Release 下载，即使路径无效也只会报错。加载插件不会运行 Cargo，按 S 搜索也不会构建或下载。
-
-## TPM 与预编译版本
-
-在 TPM 中配置已发布的版本标签：
-
-```tmux
-# 放在 TPM 初始化之前，使用已发布的版本标签。
-set -g @plugin 'y00rb/flash.tmux#v0.1.0'
-```
-
-按 `prefix + I`。TPM 克隆并加载插件后，`flash.tmux` 会把当前源码中 `VERSION` 对应的程序安装到插件的 `bin/` 目录。仓库地址从公开 GitHub 仓库的 HTTPS/SSH origin 中识别，不下载 `latest`，不需要 Rust；已有兼容程序时不联网。私有仓库或需要鉴权的 Release 不支持自动下载。
-
-固定标签安装处于 detached HEAD：TPM 的 `prefix + U` 使用 `git pull`，不会切换到新标签。更新时修改配置中的标签，再在已安装的插件目录明确获取并切换新标签，最后重新加载插件：
-
-```sh
-PLUGIN_DIR='/path/to/tpm/plugins/flash.tmux'
-git -C "$PLUGIN_DIR" fetch origin tag v0.1.1
-git -C "$PLUGIN_DIR" checkout --detach v0.1.1
-```
-
-使用实际目录和版本，切换前检查本地修改，不要强制覆盖。加载后检查实际 checkout 与 `bin/flash-tmux --version` 一致。不带 `#tag` 的分支跟踪安装可以使用 `prefix + U` 拉取更新，但要等对应 Release 存在后再更新。插件加载时会同步二进制版本。Release 不存在时会报错，不会让搜索继续使用不兼容的旧程序。
-
-本地开发保留 `@flash-bin`；测试 Release 安装时，从配置中移除这个覆盖，并执行 `tmux set-option -gu @flash-bin` 后再重载。只删除配置行不会清除正在运行的 tmux server 中的选项。下载失败时，等待 Release 公开后重新加载插件，或者在插件目录执行 `sh scripts/ensure.sh` 重试。搜索按键本身不触发下载。
-
-也可以手动安装某个已发布版本：
-
-```sh
-# 在安装后的插件目录中执行，替换为实际的仓库和版本标签。
-sh scripts/install.sh --version v0.1.0 --repo y00rb/flash.tmux
-```
-
-安装脚本会选择对应的 macOS arm64/x86_64 或 Linux arm64/x86_64 musl 程序，验证 SHA-256 和程序版本，然后原子替换 `bin/flash-tmux`，并在 `bin/install-info` 中记录版本与平台。下载、校验或运行失败时会保留原有程序。并发安装会串行处理；若安装进程被强制结束，需要先检查 `bin/.install-lock/pid`，确认进程已退出，再删除遗留锁并重试。不支持的平台或离线环境可以源码构建并设置 `@flash-bin`。
-
-推送 `vX.Y.Z` 标签会触发发布；`VERSION`、Cargo.toml 与标签必须一致。发布依赖检查成功，再构建四个平台、核对程序版本，准备完整的草稿附件后公开 Release。上传失败的草稿可重试；已公开版本不覆盖，修复问题应发布新版本。预发布会标记为 prerelease，普通分支 push 不发布 Release。
-
-Linux musl 构建旨在减少对 glibc 版本的依赖，并不保证适用于所有内核、终端或发行版。校验和用于检测文件损坏，不能防范发布者或发布渠道被入侵。
+显式设置 `@flash-bin` 后始终跳过 Release 下载，即使路径无效也只会报错。加载插件不会运行 Cargo，按 s 搜索也不会构建或下载。
 
 ## 使用方法
 
 1. 进入 tmux copy-mode，通常按 `prefix + [`。
-2. 按 **S**，即 Shift+s。
+2. 按小写 **s**。
 3. 输入当前可见文本，逐步缩小字面量匹配范围。
 4. 按显示的标签跳到对应匹配的起点，或按 Enter 选择最近的匹配。
-5. 再次按 S，可以开始新的搜索。
+5. 再次按 s，可以开始新的搜索。
 
 搜索提示显示为 `⚡ 查询词  [3 matches / 3 labels]`，默认使用 Frappe Blue 背景。匹配内容使用略微提亮的 Surface1 背景，标签保持 Pink 背景。
 
@@ -127,7 +198,7 @@ Backspace 删除一个字素簇。Esc 或 Ctrl+C 取消搜索，不改变原来�
 插件不绑定 **v**、**y** 或 **q**，不修改剪贴板设置，也不依赖 tmux-yank。使用你自己的 copy-mode 按键配置即可：
 
 ```text
-S → 搜索 → 标签 → v → S → 搜索 → 标签 → y
+s → 搜索 → 标签 → v → s → 搜索 → 标签 → y
 ```
 
 已有选区时，跳转会扩展选区。按 y 后是否退出 copy-mode，完全取决于你自己的绑定。如果使用 tmux-yank，可以在 TPM 初始化之前设置：
@@ -142,14 +213,66 @@ set -g @yank_action 'copy-pipe'
 tmux list-keys -T copy-mode-vi y
 ```
 
-**搜索界面打开时，q 和 S 是普通的搜索字符或已分配的标签，不是退出或重新搜索命令。** 如果想用 q 触发原有的 copy-mode 退出绑定，需要先按 Esc 取消搜索。如果用户的 y 绑定会退出 copy-mode，就需要重新进入 copy-mode 后再按 S 搜索。
+**搜索界面打开时，q 和 s 是普通的搜索字符或已分配的标签，不是退出或重新搜索命令。** 如果想用 q 触发原有的 copy-mode 退出绑定，需要先按 Esc 取消搜索。如果用户的 y 绑定会退出 copy-mode，就需要重新进入 copy-mode 后再按 s 搜索。
+
+## 语法范围选择
+
+| 按键 | 用途 | 模式内操作 |
+| --- | --- | --- |
+| `s` | 搜索文字并跳到起点 | 输入查询，标签或 Enter 确认 |
+| `S` | 选择当前光标所在的语法结构 | `;` 扩大、`,` 缩小，标签或 Enter 确认 |
+| `R` | 搜索文字并选择对应的语法结构 | 输入查询，选择范围标签或按 Enter |
+
+`S` 和 `R` 是独立入口，不必搭配。光标已在 `42` 上时，用 `S` 从最小节点扩大到声明、
+代码块或函数；光标不在目标上时，用 `R` 搜索 `42`，直接选择 `let_declaration` 或
+`function_item` 对应的标签。Enter 选择最近命中位置的最小范围。
+`R` 中的 `;`、`,` 是查询字符或标签，不是扩大/缩小命令。
+如果喜欢逐级调整，也可以使用 `R → 查询 → Enter → S`。
+
+预览不修改原窗格；确认后以字符选区替换原选区，不自动复制或退出 copy-mode。
+Esc/Ctrl+C 取消并保留原光标和选区。复制仍用你自己的绑定。
+普通 `s` 搜索仍然延伸已有选区。重合的节点边界也会列在提示栏中，标签覆盖屏幕单元，
+不插入或移动源码字符。标签字母会随查询变化。
+
+### 语言与 cat 测试示例
+
+内置 Rust、Python、JavaScript、TypeScript、TSX、JSON、Bash、C、C++、Go、Lua、Ruby、
+Zig、PHP、Java 共 15 个解析器。不依赖 Neovim、外部 Tree-sitter CLI 或运行时下载。
+嵌入解析器的许可证见 THIRD_PARTY_LICENSES.md。
+
+```sh
+# 在仓库根目录、需要测试的窗格中执行：
+cat tests/snippets/rust.rs
+# 进入 copy-mode，把光标移到 value/42 上按 S；或按 R 搜索 42。
+# 自动识别有歧义时，显式指定语言：
+tmux set-option -p @flash-treesitter-language rust
+# 移除窗格覆盖，恢复使用全局配置：
+tmux set-option -pu @flash-treesitter-language
+```
+
+`auto` 是默认值，正常使用不需要执行语言设置命令。显式设置的窗格覆盖会持续生效，直到修改或取消。
+
+全部文件与命令见 [tests/snippets/README.md](tests/snippets/README.md)。语言配置值为
+`rust`、`python`、`javascript`、`typescript`、`tsx`、`json`、`bash`、`c`、`cpp`、`go`、
+`lua`、`ruby`、`zig`、`php`、`java`；也接受 `js`、`ts`、`sh`、`rb`、`c++` 别名。
+窗格配置优先于全局配置。
+
+`auto` 用真实语法树验证光标附近的内容，不根据源文件名猜测；C/C++ 等公共语法可能有歧义。
+局部恢复最多向前检查 32 个逻辑行起点、向后检查 16 个换行，单片段上限为 8 KiB。
+识别与解析共享 250ms 预算，源码上限 256 KiB。过长、截断的声明和混合输出可能需要显式语言。
+只处理可见文本；视口边缘截断的软换行会被拒绝，不猜测选择坐标。
+不支持语言注入、跨窗口操作、编辑器 operator-pending，以及 Neovim 不占屏幕单元的 inline 标签。
+目标是核心流程兼容，不宣称完全复刻 flash.nvim。
 
 ## 配置
 
-请在 **TPM 初始化或手动加载插件之前**设置选项。插件只为未设置的选项填充默认值，不覆盖用户已有配置。
+请在 **TPM 初始化或手动加载插件之前**设置选项。插件只为未设置的选项填充默认值，不覆盖用户已有配置。触发键必须互不冲突；插件替换所配置按键的原生 copy-mode 动作，重载时保留用户替换的绑定。
 
 ```tmux
-set -g @flash-key 'S'
+set -g @flash-key 's'
+set -g @flash-treesitter-key 'S'
+set -g @flash-treesitter-search-key 'R'
+set -g @flash-treesitter-language 'auto'
 set -g @flash-labels 'asdfghjklASDFHJKLqwertyuiopzxcvbnmQWERTYUIOPZXCVBNM'
 set -g @flash-label-bg '#f4b8e4'   # Frappe Pink
 set -g @flash-label-fg '#303446'   # Base
@@ -172,6 +295,7 @@ cargo test
 cargo build
 python3 tests/tmux_probe.py
 python3 tests/e2e.py
+python3 tests/treesitter_e2e.py
 sh tests/plugin.sh
 sh tests/install.sh
 python3 tests/bootstrap_test.py
@@ -180,7 +304,7 @@ python3 tests/publish_test.py
 python3 scripts/check-release.py --binary target/debug/flash-tmux
 ```
 
-维护者在推送版本标签前，还应执行 `python3 scripts/check-release.py --tag v0.1.0`，其中版本号替换为实际目标版本。自动安装测试模拟 GitHub 下载，并在独立 tmux server 中验证插件入口；发布测试模拟 `gh`，覆盖草稿恢复和禁止覆盖公开版本，不会实际发布。
+维护者在推送版本标签前，还应执行 `python3 scripts/check-release.py --tag v0.2.0`，其中版本号替换为实际目标版本。自动安装测试模拟 GitHub 下载，并在独立 tmux server 中验证插件入口；发布测试模拟 `gh`，覆盖草稿恢复和禁止覆盖公开版本，不会实际发布。
 
 Python 终端测试会创建独立、用后销毁的 tmux server 和伪终端，不使用你的真实会话。测试中的剪贴板操作会被替换为写入本地临时文件。环境中存在 `nvim` 时，会执行 Neovim pane 尺寸相关测试。安装测试使用本地模拟下载，不需要网络。
 

@@ -5,7 +5,7 @@ fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args[0] == "--help" {
         println!(
-            "flash-tmux {}\nCommands:\n  start --pane ID --client NAME\n  overlay --snapshot PATH --result PATH\n  validate-config",
+            "flash-tmux {}\nCommands:\n  start --pane ID --client NAME [--mode search|treesitter|treesitter-search]\n  overlay --snapshot PATH --result PATH\n  validate-config",
             env!("CARGO_PKG_VERSION")
         );
         return Ok(());
@@ -32,7 +32,11 @@ fn run() -> Result<()> {
             tmux::config()?;
             Ok(())
         }
-        "start" => session::start(required("--pane")?, required("--client")?),
+        "start" => session::start_mode(
+            required("--pane")?,
+            required("--client")?,
+            options.get("--mode").copied().unwrap_or("search").parse()?,
+        ),
         "overlay" => session::overlay(
             Path::new(required("--snapshot")?),
             Path::new(required("--result")?),

@@ -7,9 +7,36 @@ use flash_tmux::{
 use std::collections::BTreeMap;
 
 #[test]
+fn trigger_collisions_are_rejected_with_migration_guidance() {
+    for key in ["S", "R"] {
+        let options = BTreeMap::from([("flash-key".into(), key.into())]);
+        assert!(
+            Config::from_options(&options)
+                .unwrap_err()
+                .to_string()
+                .contains("trigger")
+        );
+    }
+    for (first, second) in [
+        ("C-i", "Tab"),
+        ("C-m", "Enter"),
+        ("M-C-a", "C-M-a"),
+        ("S-M-C-x", "C-S-M-x"),
+    ] {
+        let options = BTreeMap::from([
+            ("flash-key".into(), first.into()),
+            ("flash-treesitter-key".into(), second.into()),
+        ]);
+        assert!(Config::from_options(&options).is_err());
+    }
+}
+
+#[test]
 fn config_defaults_and_validation() {
     let config = Config::from_options(&BTreeMap::new()).unwrap();
-    assert_eq!(config.key, "S");
+    assert_eq!(config.key, "s");
+    assert_eq!(config.treesitter_key, "S");
+    assert_eq!(config.treesitter_search_key, "R");
     assert_eq!(
         config.labels,
         "asdfghjklASDFHJKLqwertyuiopzxcvbnmQWERTYUIOPZXCVBNM"

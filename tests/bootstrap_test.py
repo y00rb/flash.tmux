@@ -65,7 +65,7 @@ class Bootstrap(unittest.TestCase):
             self.env['TMUX'] = tmux.command('display', '-p', '#{socket_path},#{pid},0').strip()
             result = subprocess.run(['sh', str(self.plugin / 'flash.tmux')], env=self.env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('launch.sh', tmux.command('list-keys', '-T', 'copy-mode-vi', 'S'))
+            self.assertIn('launch.sh', tmux.command('list-keys', '-T', 'copy-mode-vi', 's'))
             self.assertTrue((self.plugin / 'bin/flash-tmux').exists())
             self.env['FAIL_DOWNLOAD'] = '1'
             result = subprocess.run(['sh', str(self.plugin / 'flash.tmux')], env=self.env, capture_output=True, text=True)
