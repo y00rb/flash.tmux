@@ -21,7 +21,9 @@ set_default flash-prompt-fg '#303446'
 binary=$(tmux show-option -gqv @flash-bin)
 if [ -z "$binary" ]; then
   binary="$DIR/bin/flash-tmux"
-  tmux display-message -C -l 'flash-tmux: checking release binary...'
+  # Older tmux versions do not support non-freezing messages.
+  tmux display-message -C -l 'flash-tmux: checking release binary...' 2>/dev/null ||
+    tmux display-message -l 'flash-tmux: checking release binary...'
   if ! error=$(sh "$DIR/scripts/ensure.sh" 2>&1); then
     tmux display-message -l "flash-tmux: installation failed. $error"
     exit 1

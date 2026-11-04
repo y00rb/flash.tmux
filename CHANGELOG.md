@@ -6,6 +6,8 @@ Notable changes to flash.tmux are documented here.
 
 ### Fixed
 
-- Prevent the initialization binary-check message from freezing tmux client
-  updates. Previously, reloading the plugin could leave short-lived popups
-  blank until the message expired.
+- Make the initialization binary-check message compatible with newer and older
+  tmux versions: use non-freezing display when supported to keep short-lived
+  popups visible, and fall back to ordinary display without failing startup
+  when `-C` is unsupported. The fallback retains the older message-freezing
+  behavior.
