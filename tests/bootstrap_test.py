@@ -71,6 +71,30 @@ class Bootstrap(unittest.TestCase):
             result = subprocess.run(['sh', str(self.plugin / 'flash.tmux')], env=self.env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_entrypoint_supports_tmux_without_nonfreezing_message_flag(self):
+        real_tmux = shutil.which('tmux')
+        wrapper = self.mock / 'tmux'
+        wrapper.write_text('''#!/bin/sh
+if [ "$1" = display-message ]; then
+    for arg in "$@"; do
+        if [ "$arg" = -C ]; then
+            echo 'command display-message: unknown flag -C' >&2
+            exit 1
+        fi
+    done
+    echo "$*" >> "$MESSAGE_LOG"
+fi
+exec "$REAL_TMUX" "$@"
+''')
+        wrapper.chmod(0o755)
+        messages = self.root / 'messages'
+        self.env.update(REAL_TMUX=real_tmux, MESSAGE_LOG=str(messages))
+        self.test_tpm_entrypoint_installs_and_registers_without_cargo()
+        self.assertEqual(messages.read_text().splitlines(), [
+            'display-message -l flash-tmux: checking release binary...',
+            'display-message -l flash-tmux: checking release binary...',
+        ])
+
     def test_concurrent_install_is_serialized(self):
         self.prepare()
         command = ['sh', str(self.plugin / 'scripts/ensure.sh')]

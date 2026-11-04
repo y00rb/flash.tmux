@@ -145,12 +145,12 @@ You can also install a specific published version manually:
 
 ```sh
 # Run from the installed plugin directory; substitute the actual repository/tag.
-sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
+sh scripts/install.sh --version v0.2.1 --repo y00rb/flash.tmux
 ```
 
 The installer chooses macOS arm64/x86_64 or Linux arm64/x86_64 musl, verifies SHA-256 and the program version, then replaces `bin/flash-tmux` atomically and records its version/platform in `bin/install-info`. It preserves the prior binary if download, verification or execution fails. Concurrent installers are serialized; if an installer is forcibly killed, inspect `bin/.install-lock/pid` and confirm its process has exited before removing that stale lock and retrying. Unsupported/offline systems can use a source build with `@flash-bin`.
 
-Publishing is triggered by pushing a `vX.Y.Z` tag. `VERSION`, Cargo.toml and the tag must agree. Release depends on successful checks, builds all four targets, verifies binary versions and prepares complete draft assets before publishing. Failed draft uploads can resume; published releases are never overwritten. Use a new version for fixes. Prereleases are marked accordingly; ordinary branch pushes never publish a Release.
+Publishing is triggered by pushing a `vX.Y.Z` tag. `VERSION`, Cargo.toml and the tag must agree. Release descriptions are extracted from the matching `## [X.Y.Z]` section in `CHANGELOG.md`; a missing or empty entry stops publishing, and draft retries refresh the description from that entry. Finalize the entry's release date before tagging. Release depends on successful checks, builds all four targets, verifies binary versions and prepares complete draft assets before publishing. Failed draft uploads can resume; published releases are never overwritten. Use a new version for fixes. Prereleases are marked accordingly; ordinary branch pushes never publish a Release.
 
 Linux musl builds aim to avoid glibc-version dependence; they are not a guarantee of support for every kernel, terminal or distribution. Checksums protect against corruption, not a compromised publisher or release channel.
 
@@ -307,7 +307,7 @@ python3 tests/publish_test.py
 python3 scripts/check-release.py --binary target/debug/flash-tmux
 ```
 
-Maintainers also run `python3 scripts/check-release.py --tag v0.2.0` before pushing a release tag, using the intended version. Bootstrap tests mock GitHub downloads and exercise the entrypoint in an isolated tmux server. Publishing tests mock `gh`, including draft recovery and refusal to overwrite public releases; they do not publish anything.
+Maintainers also run `python3 scripts/check-release.py --tag v0.2.1` before pushing a release tag, using the intended version. Bootstrap tests mock GitHub downloads and exercise the entrypoint in an isolated tmux server. Publishing tests mock `gh`, including draft recovery and refusal to overwrite public releases; they do not publish anything.
 
 The Python terminal tests create unique, disposable tmux servers and PTYs, never your live session. Clipboard operations in tests are replaced with local temporary-file commands. Neovim geometry coverage runs when `nvim` is available. Installer tests use local download mocks and require no network.
 

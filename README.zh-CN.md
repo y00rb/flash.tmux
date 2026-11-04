@@ -145,12 +145,12 @@ run-shell 'sh ~/.tmux/plugins/flash.tmux/flash.tmux'
 
 ```sh
 # 在安装后的插件目录中执行，替换为实际的仓库和版本标签。
-sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
+sh scripts/install.sh --version v0.2.1 --repo y00rb/flash.tmux
 ```
 
 安装脚本会选择对应的 macOS arm64/x86_64 或 Linux arm64/x86_64 musl 程序，验证 SHA-256 和程序版本，然后原子替换 `bin/flash-tmux`，并在 `bin/install-info` 中记录版本与平台。下载、校验或运行失败时会保留原有程序。并发安装会串行处理；若安装进程被强制结束，需要先检查 `bin/.install-lock/pid`，确认进程已退出，再删除遗留锁并重试。不支持的平台或离线环境可以源码构建并设置 `@flash-bin`。
 
-推送 `vX.Y.Z` 标签会触发发布；`VERSION`、Cargo.toml 与标签必须一致。发布依赖检查成功，再构建四个平台、核对程序版本，准备完整的草稿附件后公开 Release。上传失败的草稿可重试；已公开版本不覆盖，修复问题应发布新版本。预发布会标记为 prerelease，普通分支 push 不发布 Release。
+推送 `vX.Y.Z` 标签会触发发布；`VERSION`、Cargo.toml 与标签必须一致。Release 描述自动提取自 `CHANGELOG.md` 中对应的 `## [X.Y.Z]` 条目；条目缺失或为空时会停止发布，重试草稿时也会同步更新描述。打标签前应先填写实际发布日期。发布依赖检查成功，再构建四个平台、核对程序版本，准备完整的草稿附件后公开 Release。上传失败的草稿可重试；已公开版本不覆盖，修复问题应发布新版本。预发布会标记为 prerelease，普通分支 push 不发布 Release。
 
 Linux musl 构建旨在减少对 glibc 版本的依赖，并不保证适用于所有内核、终端或发行版。校验和用于检测文件损坏，不能防范发布者或发布渠道被入侵。
 
@@ -304,7 +304,7 @@ python3 tests/publish_test.py
 python3 scripts/check-release.py --binary target/debug/flash-tmux
 ```
 
-维护者在推送版本标签前，还应执行 `python3 scripts/check-release.py --tag v0.2.0`，其中版本号替换为实际目标版本。自动安装测试模拟 GitHub 下载，并在独立 tmux server 中验证插件入口；发布测试模拟 `gh`，覆盖草稿恢复和禁止覆盖公开版本，不会实际发布。
+维护者在推送版本标签前，还应执行 `python3 scripts/check-release.py --tag v0.2.1`，其中版本号替换为实际目标版本。自动安装测试模拟 GitHub 下载，并在独立 tmux server 中验证插件入口；发布测试模拟 `gh`，覆盖草稿恢复和禁止覆盖公开版本，不会实际发布。
 
 Python 终端测试会创建独立、用后销毁的 tmux server 和伪终端，不使用你的真实会话。测试中的剪贴板操作会被替换为写入本地临时文件。环境中存在 `nvim` 时，会执行 Neovim pane 尺寸相关测试。安装测试使用本地模拟下载，不需要网络。
 
