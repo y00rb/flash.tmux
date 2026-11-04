@@ -2,7 +2,7 @@
 
 Notable changes to flash.tmux are documented here.
 
-## [0.2.1] - Unreleased
+## [0.2.1] - 2026-11-04
 
 ### Fixed
 
