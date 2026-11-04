@@ -145,7 +145,7 @@ run-shell 'sh ~/.tmux/plugins/flash.tmux/flash.tmux'
 
 ```sh
 # 在安装后的插件目录中执行，替换为实际的仓库和版本标签。
-sh scripts/install.sh --version v0.2.0 --repo y00rb/flash.tmux
+sh scripts/install.sh --version v0.2.1 --repo y00rb/flash.tmux
 ```
 
 安装脚本会选择对应的 macOS arm64/x86_64 或 Linux arm64/x86_64 musl 程序，验证 SHA-256 和程序版本，然后原子替换 `bin/flash-tmux`，并在 `bin/install-info` 中记录版本与平台。下载、校验或运行失败时会保留原有程序。并发安装会串行处理；若安装进程被强制结束，需要先检查 `bin/.install-lock/pid`，确认进程已退出，再删除遗留锁并重试。不支持的平台或离线环境可以源码构建并设置 `@flash-bin`。
@@ -304,7 +304,7 @@ python3 tests/publish_test.py
 python3 scripts/check-release.py --binary target/debug/flash-tmux
 ```
 
-维护者在推送版本标签前，还应执行 `python3 scripts/check-release.py --tag v0.2.0`，其中版本号替换为实际目标版本。自动安装测试模拟 GitHub 下载，并在独立 tmux server 中验证插件入口；发布测试模拟 `gh`，覆盖草稿恢复和禁止覆盖公开版本，不会实际发布。
+维护者在推送版本标签前，还应执行 `python3 scripts/check-release.py --tag v0.2.1`，其中版本号替换为实际目标版本。自动安装测试模拟 GitHub 下载，并在独立 tmux server 中验证插件入口；发布测试模拟 `gh`，覆盖草稿恢复和禁止覆盖公开版本，不会实际发布。
 
 Python 终端测试会创建独立、用后销毁的 tmux server 和伪终端，不使用你的真实会话。测试中的剪贴板操作会被替换为写入本地临时文件。环境中存在 `nvim` 时，会执行 Neovim pane 尺寸相关测试。安装测试使用本地模拟下载，不需要网络。
 
