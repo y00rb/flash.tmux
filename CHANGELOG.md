@@ -11,3 +11,9 @@ Notable changes to flash.tmux are documented here.
   popups visible, and fall back to ordinary display without failing startup
   when `-C` is unsupported. The fallback retains the older message-freezing
   behavior.
+
+### Changed
+
+- Generate GitHub Release descriptions from the matching version in this
+  changelog, including when resuming a draft. Missing or empty entries stop
+  publication before any GitHub API call.

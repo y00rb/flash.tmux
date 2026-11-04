@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import tarfile
@@ -16,7 +17,20 @@ class Publish(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.tag = 'v' + (ROOT / 'VERSION').read_text().strip()
-        self.script = ROOT / 'scripts/publish.sh'
+        self.project = self.root / 'project'
+        (self.project / 'scripts').mkdir(parents=True)
+        for filename in ['publish.sh', 'check-release.py', 'release-notes.py']:
+            source = ROOT / 'scripts' / filename
+            if source.exists():
+                shutil.copy(source, self.project / 'scripts' / filename)
+        for filename in ['VERSION', 'Cargo.toml']:
+            shutil.copy(ROOT / filename, self.project / filename)
+        self.notes = '### Fixed\n\n- Keep popup updates visible.\n'
+        (self.project / 'CHANGELOG.md').write_text(
+            '# Changelog\n\n## [Unreleased]\n\n- Not published yet.\n\n'
+            + '## [' + self.tag[1:] + '] - 2026-11-04\n\n' + self.notes
+            + '\n## [0.1.0] - 2025-01-01\n\n- Older release.\n')
+        self.script = self.project / 'scripts/publish.sh'
         self.dist = self.root / 'dist'
         self.dist.mkdir()
         for target in TARGETS:
@@ -33,6 +47,8 @@ import json,os,sys
 from pathlib import Path
 p=Path(os.environ['FAKE_GH_STATE']); s=json.loads(p.read_text()); a=sys.argv[1:]
 s['calls'].append(a)
+if '--notes-file' in a:
+    s['notes'] = Path(a[a.index('--notes-file') + 1]).read_text()
 if a[0]=='api':
     if os.environ.get('FAIL_API'):
         p.write_text(json.dumps(s)); print('HTTP 403',file=sys.stderr); sys.exit(1)
@@ -42,7 +58,7 @@ if a[0]=='api':
 elif a[:2]==['release','create']: s['draft']=True
 elif a[:2]==['release','upload'] and os.environ.get('FAIL_UPLOAD'):
     p.write_text(json.dumps(s)); sys.exit(1)
-elif a[:2]==['release','edit']: s['draft']=False
+elif a[:2]==['release','edit'] and '--draft=false' in a: s['draft']=False
 p.write_text(json.dumps(s))
 ''')
         gh.chmod(0o755)
@@ -59,6 +75,26 @@ p.write_text(json.dumps(s))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(json.loads(self.state.read_text())['draft'])
         self.assertEqual(len((self.dist / 'SHA256SUMS').read_text().splitlines()), 4)
+        state = json.loads(self.state.read_text())
+        self.assertEqual(state['notes'].strip(), self.notes.strip())
+        self.assertFalse(any('--generate-notes' in call for call in state['calls']))
+
+    def test_missing_or_empty_changelog_section_never_calls_github(self):
+        for content in [None, '# Changelog\n', '## [' + self.tag[1:] + '] - Unreleased\n\n## [0.1.0]\nOld notes\n']:
+            with self.subTest(content=content):
+                changelog = self.project / 'CHANGELOG.md'
+                if content is None:
+                    changelog.unlink()
+                else:
+                    changelog.write_text(content)
+                self.assertNotEqual(self.publish().returncode, 0)
+                self.assertEqual(json.loads(self.state.read_text())['calls'], [])
+
+    def test_existing_draft_notes_are_updated(self):
+        self.state.write_text(json.dumps({'draft': True, 'calls': []}))
+        result = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.state.read_text())['notes'].strip(), self.notes.strip())
 
     def test_missing_target_never_creates_release(self):
         next(self.dist.glob('*.tar.gz')).unlink()
@@ -84,8 +120,11 @@ p.write_text(json.dumps(s))
         import shutil
         project = self.root / 'prerelease'
         (project / 'scripts').mkdir(parents=True)
-        for filename in ['publish.sh', 'check-release.py']:
-            shutil.copy(ROOT / 'scripts' / filename, project / 'scripts' / filename)
+        for filename in ['publish.sh', 'check-release.py', 'release-notes.py']:
+            source = ROOT / 'scripts' / filename
+            if source.exists():
+                shutil.copy(source, project / 'scripts' / filename)
+        (project / 'CHANGELOG.md').write_text('## [0.1.0-rc.1] - Unreleased\n\n### Fixed\n\n- Preview fix.\n')
         (project / 'VERSION').write_text('0.1.0-rc.1' + chr(10))
         (project / 'Cargo.toml').write_text('[package]' + chr(10) + 'version="0.1.0-rc.1"' + chr(10))
         old_tag = self.tag

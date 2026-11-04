@@ -20,14 +20,17 @@ set -- "$dist"/*.tar.gz
     else shasum -a 256 ./*.tar.gz; fi
 ) | sed 's|  \./|  |' > "$dist/SHA256SUMS"
 error=$(mktemp)
-trap 'rm -f "$error"' EXIT
+notes=$(mktemp)
+trap 'rm -f "$error" "$notes"' EXIT
+python3 "$ROOT/scripts/release-notes.py" "$tag" "$ROOT/CHANGELOG.md" > "$notes"
 if draft=$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq .draft 2>"$error"); then
     [ "$draft" = true ] || { echo 'Release is already public; publish a new version instead of replacing it' >&2; exit 1; }
+    gh release edit "$tag" --notes-file "$notes"
 else
     if ! grep -q 'HTTP 404' "$error"; then cat "$error" >&2; exit 1; fi
     case "$tag" in
-        *-*) gh release create "$tag" --draft --prerelease --verify-tag --generate-notes --title "$tag" ;;
-        *) gh release create "$tag" --draft --verify-tag --generate-notes --title "$tag" ;;
+        *-*) gh release create "$tag" --draft --prerelease --verify-tag --notes-file "$notes" --title "$tag" ;;
+        *) gh release create "$tag" --draft --verify-tag --notes-file "$notes" --title "$tag" ;;
     esac
 fi
 # Only drafts reach this point; a failed upload can be retried safely.
